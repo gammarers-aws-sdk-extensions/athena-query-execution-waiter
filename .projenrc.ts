@@ -1,0 +1,25 @@
+import { typescript, javascript } from 'projen';
+const project = new typescript.TypeScriptProject({
+  authorName: 'yicr',
+  authorEmail: 'yicr@users.noreply.github.com',
+  defaultReleaseBranch: 'main',
+  name: 'athena-query-execution-waiter',
+  projenrcTs: true,
+  typescriptVersion: '5.9.x',
+  repository: 'https://github.com/gammarers-aws-sdk-extensions/athena-query-execution-waiter.git',
+  releaseToNpm: false,
+  npmAccess: javascript.NpmAccess.PUBLIC,
+  minNodeVersion: '20.0.0',
+  workflowNodeVersion: '24.x',
+  depsUpgradeOptions: {
+    workflowOptions: {
+      labels: ['auto-approve', 'auto-merge'],
+      // schedule: javascript.UpgradeDependenciesSchedule.expressions(['15 16 * * 5']),
+    },
+  },
+  autoApproveOptions: {
+    secret: 'GITHUB_TOKEN',
+    allowedUsernames: ['yicr'],
+  },
+});
+project.synth();
