@@ -1,0 +1,26 @@
+{
+  "name": "dev-athena-query-execution-waiter",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "username": "developer",
+      "upgradePackages": true
+    },
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    }
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "target=/workspace/node_modules"
+  ],
+  "remoteUser": "developer",
+  "remoteEnv": {
+    "npm_config_loglevel": "error"
+  },
+  "postCreateCommand": {
+    "fixVolumePerms": "sudo chown -R $(whoami): /workspace"
+  }
+}
