@@ -7,6 +7,9 @@ const project = new typescript.TypeScriptProject({
   projenrcTs: true,
   typescriptVersion: '5.9.x',
   repository: 'https://github.com/gammarers-aws-sdk-extensions/athena-query-execution-waiter.git',
+  deps: [
+    '@aws-sdk/client-athena@^3.983.0',
+  ],
   releaseToNpm: false,
   npmAccess: javascript.NpmAccess.PUBLIC,
   minNodeVersion: '20.0.0',
