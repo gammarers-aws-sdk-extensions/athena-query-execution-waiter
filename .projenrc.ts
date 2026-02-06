@@ -1,4 +1,4 @@
-import { typescript, javascript } from 'projen';
+import { typescript, javascript, github } from 'projen';
 const project = new typescript.TypeScriptProject({
   authorName: 'yicr',
   authorEmail: 'yicr@users.noreply.github.com',
@@ -20,9 +20,19 @@ const project = new typescript.TypeScriptProject({
       // schedule: javascript.UpgradeDependenciesSchedule.expressions(['15 16 * * 5']),
     },
   },
+  githubOptions: {
+    projenCredentials: github.GithubCredentials.fromApp({
+      permissions: {
+        pullRequests: github.workflows.AppPermission.WRITE,
+        contents: github.workflows.AppPermission.WRITE,
+      },
+    }),
+  },
   autoApproveOptions: {
-    secret: 'GITHUB_TOKEN',
-    allowedUsernames: ['yicr'],
+    allowedUsernames: [
+      'gammarers-projen-upgrade-bot[bot]',
+      'yicr',
+    ],
   },
 });
 project.synth();
