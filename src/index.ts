@@ -4,7 +4,7 @@ export class AthenaQueryExecutionWaiter {
 
   constructor(private readonly client: AthenaClient) {}
 
-  async wait(queryExecutionId: string) {
+  async wait(queryExecutionId: string): Promise<QueryExecutionState> {
     // const startTime = Date.now();
     while (true) {
       // if (Date.now() - startTime > timeoutMs) {
@@ -18,8 +18,10 @@ export class AthenaQueryExecutionWaiter {
       const state = st?.State as QueryExecutionState | undefined;
       const reason = st?.StateChangeReason ?? '';
 
-      if (state === 'SUCCEEDED') return 'SUCCEEDED';
-      if (state === 'FAILED' || state === 'CANCELLED') {
+      if (state === QueryExecutionState.SUCCEEDED) {
+        return QueryExecutionState.SUCCEEDED;
+      }
+      if (state === QueryExecutionState.FAILED || state === QueryExecutionState.CANCELLED) {
         throw new Error(`Athena query ${state}: ${reason}`);
       }
       await new Promise((r) => setTimeout(r, 1000));
