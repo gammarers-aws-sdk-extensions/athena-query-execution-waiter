@@ -1,4 +1,8 @@
-import { AthenaQueryExecutionWaiter } from '../src/index';
+import {
+  AthenaQueryExecutionWaiter,
+  AthenaQueryExecutionWaiterStateError,
+  AthenaQueryExecutionWaiterTimeoutError,
+} from '../src/index';
 
 describe('AthenaQueryExecutionWaiter', () => {
   const queryExecutionId = 'test-query-id';
@@ -19,7 +23,7 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
 
-    it('throws Error with reason when state is FAILED', async () => {
+    it('throws AthenaQueryExecutionWaiterStateError with reason when state is FAILED', async () => {
       const reason = 'Table not found';
       const mockSend = jest.fn().mockResolvedValue({
         QueryExecution: {
@@ -29,13 +33,20 @@ describe('AthenaQueryExecutionWaiter', () => {
       const client = { send: mockSend } as any;
       const waiter = new AthenaQueryExecutionWaiter(client);
 
-      await expect(waiter.wait(queryExecutionId)).rejects.toThrow(
-        `Athena query FAILED: ${reason}`,
+      let err: unknown;
+      try {
+        await waiter.wait(queryExecutionId);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterStateError);
+      expect((err as Error).message).toBe(
+        `Athena query execution failed with state FAILED: ${reason}`,
       );
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
 
-    it('throws Error with reason when state is CANCELLED', async () => {
+    it('throws AthenaQueryExecutionWaiterStateError with reason when state is CANCELLED', async () => {
       const reason = 'User cancelled';
       const mockSend = jest.fn().mockResolvedValue({
         QueryExecution: {
@@ -45,8 +56,15 @@ describe('AthenaQueryExecutionWaiter', () => {
       const client = { send: mockSend } as any;
       const waiter = new AthenaQueryExecutionWaiter(client);
 
-      await expect(waiter.wait(queryExecutionId)).rejects.toThrow(
-        `Athena query CANCELLED: ${reason}`,
+      let err: unknown;
+      try {
+        await waiter.wait(queryExecutionId);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterStateError);
+      expect((err as Error).message).toBe(
+        `Athena query execution failed with state CANCELLED: ${reason}`,
       );
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
@@ -71,6 +89,27 @@ describe('AthenaQueryExecutionWaiter', () => {
 
       expect(result).toBe('SUCCEEDED');
       expect(mockSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws AthenaQueryExecutionWaiterTimeoutError when timeout is exceeded', async () => {
+      const mockSend = jest.fn().mockResolvedValue({
+        QueryExecution: {
+          Status: { State: 'RUNNING' },
+        },
+      });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client);
+      const timeoutMs = 100;
+
+      let err: unknown;
+      try {
+        await waiter.wait(queryExecutionId, timeoutMs);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterTimeoutError);
+      expect((err as Error).message).toMatch(/Athena query timed out after \d+ms/);
+      expect(mockSend).toHaveBeenCalled();
     });
   });
 });
