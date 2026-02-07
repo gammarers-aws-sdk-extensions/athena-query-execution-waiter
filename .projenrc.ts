@@ -11,7 +11,7 @@ const project = new typescript.TypeScriptProject({
     '@aws-sdk/client-athena@^3.983.0',
   ],
   releaseToNpm: true,
-  // npmTrustedPublishing: true,
+  npmTrustedPublishing: true,
   npmAccess: javascript.NpmAccess.PUBLIC,
   minNodeVersion: '20.0.0',
   workflowNodeVersion: '24.x',
