@@ -8,7 +8,7 @@ describe('AthenaQueryExecutionWaiter', () => {
   const queryExecutionId = 'test-query-id';
 
   describe('wait', () => {
-    it('returns "SUCCEEDED" when state is SUCCEEDED', async () => {
+    it('should return "SUCCEEDED" when state is SUCCEEDED', async () => {
       const mockSend = jest.fn().mockResolvedValue({
         QueryExecution: {
           Status: { State: 'SUCCEEDED' },
@@ -23,7 +23,7 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
 
-    it('throws AthenaQueryExecutionWaiterStateError with reason when state is FAILED', async () => {
+    it('should throw AthenaQueryExecutionWaiterStateError with reason when state is FAILED', async () => {
       const reason = 'Table not found';
       const mockSend = jest.fn().mockResolvedValue({
         QueryExecution: {
@@ -46,7 +46,7 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
 
-    it('throws AthenaQueryExecutionWaiterStateError with reason when state is CANCELLED', async () => {
+    it('should throw AthenaQueryExecutionWaiterStateError with reason when state is CANCELLED', async () => {
       const reason = 'User cancelled';
       const mockSend = jest.fn().mockResolvedValue({
         QueryExecution: {
@@ -69,7 +69,7 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
 
-    it('returns "SUCCEEDED" after RUNNING then SUCCEEDED', async () => {
+    it('should return "SUCCEEDED" after RUNNING then SUCCEEDED', async () => {
       const mockSend = jest
         .fn()
         .mockResolvedValueOnce({
@@ -91,7 +91,7 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(mockSend).toHaveBeenCalledTimes(2);
     });
 
-    it('throws AthenaQueryExecutionWaiterTimeoutError when timeout is exceeded', async () => {
+    it('should throw AthenaQueryExecutionWaiterTimeoutError when timeout is exceeded', async () => {
       const mockSend = jest.fn().mockResolvedValue({
         QueryExecution: {
           Status: { State: 'RUNNING' },
@@ -103,13 +103,63 @@ describe('AthenaQueryExecutionWaiter', () => {
 
       let err: unknown;
       try {
-        await waiter.wait(queryExecutionId, timeoutMs);
+        await waiter.wait(queryExecutionId, timeoutMs, { pollIntervalMs: 10 });
       } catch (e) {
         err = e;
       }
       expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterTimeoutError);
       expect((err as Error).message).toMatch(/Athena query timed out after \d+ms/);
       expect(mockSend).toHaveBeenCalled();
+    });
+
+    it('should use pollIntervalMs from constructor options', async () => {
+      const pollIntervalMs = 200;
+      const mockSend = jest
+        .fn()
+        .mockResolvedValueOnce({
+          QueryExecution: { Status: { State: 'RUNNING' } },
+        })
+        .mockResolvedValueOnce({
+          QueryExecution: { Status: { State: 'SUCCEEDED' } },
+        });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client, { pollIntervalMs });
+
+      jest.useFakeTimers();
+      const p = waiter.wait(queryExecutionId);
+      await Promise.resolve();
+      expect(mockSend).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(pollIntervalMs);
+      const result = await p;
+      jest.useRealTimers();
+
+      expect(result).toBe('SUCCEEDED');
+      expect(mockSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use pollIntervalMs from wait() options and override constructor default', async () => {
+      const mockSend = jest
+        .fn()
+        .mockResolvedValueOnce({
+          QueryExecution: { Status: { State: 'RUNNING' } },
+        })
+        .mockResolvedValueOnce({
+          QueryExecution: { Status: { State: 'SUCCEEDED' } },
+        });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client, { pollIntervalMs: 5000 });
+      const callPollIntervalMs = 150;
+
+      jest.useFakeTimers();
+      const p = waiter.wait(queryExecutionId, 10000, { pollIntervalMs: callPollIntervalMs });
+      await Promise.resolve();
+      expect(mockSend).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(callPollIntervalMs);
+      const result = await p;
+      jest.useRealTimers();
+
+      expect(result).toBe('SUCCEEDED');
+      expect(mockSend).toHaveBeenCalledTimes(2);
     });
   });
 });
