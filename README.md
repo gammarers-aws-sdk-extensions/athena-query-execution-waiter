@@ -4,10 +4,16 @@ A small library that waits for an AWS Athena query execution to complete. It pol
 
 ## Installation
 
+**yarn:**
+
+```bash
+yarn add athena-query-execution-waiter
+```
+
+**npm:**
+
 ```bash
 npm install athena-query-execution-waiter
-# or
-yarn add athena-query-execution-waiter
 ```
 
 ## Requirements
@@ -53,19 +59,38 @@ The default timeout is 10 seconds. You can pass a custom timeout in milliseconds
 const state = await waiter.wait(queryExecutionId, 60_000); // 60 seconds
 ```
 
+### Polling interval
+
+The default polling interval is 1 second. For long-running queries, you can increase it to reduce API calls. Set it at construction time or per `wait()` call:
+
+```typescript
+// Waiter-wide: poll every 5 seconds
+const waiter = new AthenaQueryExecutionWaiter(client, { pollIntervalMs: 5000 });
+
+// Or per call (overrides the waiter default)
+const state = await waiter.wait(queryExecutionId, 60_000, { pollIntervalMs: 3000 });
+```
+
 ## API
 
 ### `AthenaQueryExecutionWaiter`
 
-- **Constructor:** `new AthenaQueryExecutionWaiter(client: AthenaClient)`
+- **Constructor:** `new AthenaQueryExecutionWaiter(client: AthenaClient, options?: AthenaQueryExecutionWaiterOptions)`
   - `client` – An AWS SDK v3 `AthenaClient` instance.
+  - `options.pollIntervalMs` – Optional. Polling interval in ms (default: 1000).
 
-- **`wait(queryExecutionId: string, timeoutMs?: number): Promise<QueryExecutionState>`**
+- **`wait(queryExecutionId: string, timeoutMs?: number, waitOptions?: AthenaQueryExecutionWaitOptions): Promise<QueryExecutionState>`**
   - Polls the query execution status until it completes.
   - **Returns** the execution state (`SUCCEEDED`) on success.
   - **Throws** `AthenaQueryExecutionWaiterTimeoutError` if the timeout is exceeded.
   - **Throws** `AthenaQueryExecutionWaiterStateError` when the state is `FAILED` or `CANCELLED`.
-  - `timeoutMs` defaults to 10,000 ms when omitted. Polling interval is 1 second.
+  - `timeoutMs` defaults to 10,000 ms when omitted.
+  - `waitOptions.pollIntervalMs` – Optional. Overrides the polling interval for this call (default: use constructor value or 1000).
+
+### Types
+
+- **`AthenaQueryExecutionWaiterOptions`** – `{ pollIntervalMs?: number }` (constructor options).
+- **`AthenaQueryExecutionWaitOptions`** – `{ pollIntervalMs?: number }` (options for `wait()`).
 
 ### Errors
 
