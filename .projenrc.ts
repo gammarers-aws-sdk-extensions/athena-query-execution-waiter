@@ -26,6 +26,7 @@ const project = new typescript.TypeScriptProject({
       permissions: {
         pullRequests: github.workflows.AppPermission.WRITE,
         contents: github.workflows.AppPermission.WRITE,
+        workflows: github.workflows.AppPermission.WRITE,
       },
     }),
   },
