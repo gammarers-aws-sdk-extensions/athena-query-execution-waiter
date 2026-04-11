@@ -4,6 +4,8 @@ A small library that waits for an AWS Athena query execution to complete. It pol
 
 ## Installation
 
+**@aws-sdk/client-athena** is a normal **dependency** of this package: installing `athena-query-execution-waiter` pulls in a compatible AWS SDK v3 Athena client. If your app also depends on `@aws-sdk/client-athena`, npm/yarn will dedupe when versions are compatible; otherwise you may have two copies under different semver ranges.
+
 **yarn:**
 
 ```bash
@@ -19,7 +21,7 @@ npm install athena-query-execution-waiter
 ## Requirements
 
 - **Node.js** >= 20.0.0
-- **@aws-sdk/client-athena** (peer dependency; compatible with AWS SDK v3)
+- **@aws-sdk/client-athena** — declared in this package’s `package.json` under `dependencies` (AWS SDK v3; version range is maintained there).
 
 ## Usage
 
