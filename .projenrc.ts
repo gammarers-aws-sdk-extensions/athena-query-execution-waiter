@@ -37,4 +37,5 @@ const project = new typescript.TypeScriptProject({
     ],
   },
 });
+project.addPackageIgnore('/.devcontainer');
 project.synth();
