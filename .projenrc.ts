@@ -7,6 +7,7 @@ const project = new typescript.TypeScriptProject({
   projenrcTs: true,
   typescriptVersion: '5.9.x',
   repository: 'https://github.com/gammarers-aws-sdk-extensions/athena-query-execution-waiter.git',
+  packageManager: javascript.NodePackageManager.YARN_CLASSIC,
   deps: [
     '@aws-sdk/client-athena@^3.983.0',
   ],
@@ -37,5 +38,6 @@ const project = new typescript.TypeScriptProject({
     ],
   },
 });
+project.package.addField('packageManager', 'yarn@1.22.22');
 project.addPackageIgnore('/.devcontainer');
 project.synth();
