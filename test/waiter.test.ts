@@ -103,12 +103,31 @@ describe('AthenaQueryExecutionWaiter', () => {
 
       let err: unknown;
       try {
-        await waiter.wait(queryExecutionId, timeoutMs, { pollIntervalMs: 10 });
+        await waiter.wait(queryExecutionId, { timeoutMs, pollIntervalMs: 10 });
       } catch (e) {
         err = e;
       }
       expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterTimeoutError);
       expect((err as Error).message).toMatch(/Athena query timed out after \d+ms/);
+      expect(mockSend).toHaveBeenCalled();
+    });
+
+    it('should use waitOptions.timeoutMs when provided', async () => {
+      const mockSend = jest.fn().mockResolvedValue({
+        QueryExecution: {
+          Status: { State: 'RUNNING' },
+        },
+      });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client, { pollIntervalMs: 10 });
+
+      let err: unknown;
+      try {
+        await waiter.wait(queryExecutionId, { timeoutMs: 120 });
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterTimeoutError);
       expect(mockSend).toHaveBeenCalled();
     });
 
@@ -151,7 +170,10 @@ describe('AthenaQueryExecutionWaiter', () => {
       const callPollIntervalMs = 150;
 
       jest.useFakeTimers();
-      const p = waiter.wait(queryExecutionId, 10000, { pollIntervalMs: callPollIntervalMs });
+      const p = waiter.wait(queryExecutionId, {
+        timeoutMs: 10000,
+        pollIntervalMs: callPollIntervalMs,
+      });
       await Promise.resolve();
       expect(mockSend).toHaveBeenCalledTimes(1);
       jest.advanceTimersByTime(callPollIntervalMs);
