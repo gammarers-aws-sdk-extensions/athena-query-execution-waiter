@@ -1,5 +1,6 @@
 {
   "name": "athena-query-execution-waiter",
+  "description": "A small library that waits for an AWS Athena query execution to complete. It polls the Athena API until the execution reaches a terminal state: SUCCEEDED, FAILED, or CANCELLED.",
   "repository": {
     "type": "git",
     "url": "https://github.com/gammarers-aws-sdk-extensions/athena-query-execution-waiter.git"
@@ -50,6 +51,14 @@
   "dependencies": {
     "@aws-sdk/client-athena": "^3.983.0"
   },
+  "keywords": [
+    "athena",
+    "aws",
+    "aws-sdk",
+    "execution",
+    "query",
+    "waiter"
+  ],
   "engines": {
     "node": ">= 20.0.0"
   },
