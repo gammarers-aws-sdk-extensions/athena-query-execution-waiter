@@ -9,7 +9,7 @@ A small library that waits for an AWS Athena query execution to complete. It pol
 
 - Polls `GetQueryExecution` until the run finishes or an **overall wall-clock timeout** is exceeded (separate from **polling interval**).
 - Configurable **overall timeout** and **poll spacing** via `wait()` options; default overall cap is **`DEFAULT_TIMEOUT_MS`** (2 minutes).
-- Typed errors: **`AthenaQueryExecutionWaiterTimeoutError`**, **`AthenaQueryExecutionWaiterStateError`** (failed or cancelled runs).
+- Typed errors: **`AthenaQueryExecutionWaiterTimeoutError`**, **`AthenaQueryExecutionWaiterStateError`** (failed or cancelled runs), **`AthenaQueryExecutionWaiterMissingStateError`**, **`AthenaQueryExecutionWaiterUnsupportedStateError`**.
 - Built for **AWS SDK for JavaScript v3** (`@aws-sdk/client-athena`).
 
 ## Installation
@@ -118,6 +118,8 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
   - **Returns** `SUCCEEDED` on success.
   - **Throws** `AthenaQueryExecutionWaiterTimeoutError` if overall wait exceeds the effective timeout.
   - **Throws** `AthenaQueryExecutionWaiterStateError` when the state is `FAILED` or `CANCELLED`.
+  - **Throws** `AthenaQueryExecutionWaiterMissingStateError` when `QueryExecution`, `Status`, or `State` is missing from the API response (fail-fast; no polling until timeout).
+  - **Throws** `AthenaQueryExecutionWaiterUnsupportedStateError` when `State` is present but not a known `QueryExecutionState` (e.g. a future Athena enum value).
 
 ### Constants
 
@@ -128,6 +130,8 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
 - **`AthenaQueryExecutionWaiterError`** — Base class for waiter errors.
 - **`AthenaQueryExecutionWaiterTimeoutError`** — Overall elapsed time since `wait()` started exceeded `waitOptions.timeoutMs` or `DEFAULT_TIMEOUT_MS`. Constructor: `(elapsedTime: number)`.
 - **`AthenaQueryExecutionWaiterStateError`** — Query ended in `FAILED` or `CANCELLED`. Properties: `state`, `reason`. Constructor: `(state: QueryExecutionState, reason?: string)`.
+- **`AthenaQueryExecutionWaiterMissingStateError`** — `GetQueryExecution` response is missing `QueryExecution`, `Status`, or `State`. Property: `detail`. Fails on the first poll.
+- **`AthenaQueryExecutionWaiterUnsupportedStateError`** — `State` is not one of the known values (`QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`). Property: `state`. Fails on the first poll.
 
 ## License
 

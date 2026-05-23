@@ -1,7 +1,9 @@
 import {
   AthenaQueryExecutionWaiter,
+  AthenaQueryExecutionWaiterMissingStateError,
   AthenaQueryExecutionWaiterStateError,
   AthenaQueryExecutionWaiterTimeoutError,
+  AthenaQueryExecutionWaiterUnsupportedStateError,
 } from '../src/index';
 
 describe('AthenaQueryExecutionWaiter', () => {
@@ -65,6 +67,43 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterStateError);
       expect((err as Error).message).toBe(
         `Athena query execution failed with state CANCELLED: ${reason}`,
+      );
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw AthenaQueryExecutionWaiterMissingStateError when QueryExecution is missing', async () => {
+      const mockSend = jest.fn().mockResolvedValue({});
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client);
+
+      await expect(waiter.wait(queryExecutionId)).rejects.toBeInstanceOf(
+        AthenaQueryExecutionWaiterMissingStateError,
+      );
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw AthenaQueryExecutionWaiterMissingStateError when State is missing', async () => {
+      const mockSend = jest.fn().mockResolvedValue({
+        QueryExecution: { Status: {} },
+      });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client);
+
+      await expect(waiter.wait(queryExecutionId)).rejects.toBeInstanceOf(
+        AthenaQueryExecutionWaiterMissingStateError,
+      );
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw AthenaQueryExecutionWaiterUnsupportedStateError for unknown state', async () => {
+      const mockSend = jest.fn().mockResolvedValue({
+        QueryExecution: { Status: { State: 'FUTURE_STATE' } },
+      });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client);
+
+      await expect(waiter.wait(queryExecutionId)).rejects.toBeInstanceOf(
+        AthenaQueryExecutionWaiterUnsupportedStateError,
       );
       expect(mockSend).toHaveBeenCalledTimes(1);
     });

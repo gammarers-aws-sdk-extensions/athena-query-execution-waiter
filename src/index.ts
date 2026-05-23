@@ -1,4 +1,5 @@
 import { GetQueryExecutionCommand, QueryExecutionState, AthenaClient } from '@aws-sdk/client-athena';
+import { classifyQueryExecutionPoll } from './wait-predicates';
 
 /** Default polling interval (milliseconds) for query execution status. */
 const DEFAULT_POLL_INTERVAL_MS = 1000;
@@ -71,6 +72,8 @@ export class AthenaQueryExecutionWaiter {
    * @returns Execution state on success (SUCCEEDED)
    * @throws AthenaQueryExecutionWaiterTimeoutError On timeout
    * @throws AthenaQueryExecutionWaiterStateError When state is FAILED or CANCELLED
+   * @throws AthenaQueryExecutionWaiterMissingStateError When QueryExecution or Status.State is missing
+   * @throws AthenaQueryExecutionWaiterUnsupportedStateError When state is not a known QueryExecutionState
    */
   async wait(
     queryExecutionId: string,
@@ -88,16 +91,21 @@ export class AthenaQueryExecutionWaiter {
       const res = await this.client.send(new GetQueryExecutionCommand({
         QueryExecutionId: queryExecutionId,
       }));
-      const st = res.QueryExecution?.Status;
-      const state = st?.State as QueryExecutionState | undefined;
-      const reason = st?.StateChangeReason;
+      const outcome = classifyQueryExecutionPoll(res);
 
-      if (state === QueryExecutionState.SUCCEEDED) {
-        return state;
+      if (outcome.kind === 'succeeded') {
+        return QueryExecutionState.SUCCEEDED;
       }
-      if (state === QueryExecutionState.FAILED || state === QueryExecutionState.CANCELLED) {
-        throw new AthenaQueryExecutionWaiterStateError(state, reason ?? 'unknown');
+      if (outcome.kind === 'failed') {
+        throw new AthenaQueryExecutionWaiterStateError(outcome.state, outcome.reason);
       }
+      if (outcome.kind === 'missing') {
+        throw new AthenaQueryExecutionWaiterMissingStateError(outcome.detail);
+      }
+      if (outcome.kind === 'unsupported') {
+        throw new AthenaQueryExecutionWaiterUnsupportedStateError(outcome.state);
+      }
+
       await new Promise((r) => setTimeout(r, pollIntervalMs));
     } while (true);
   }
@@ -143,5 +151,33 @@ export class AthenaQueryExecutionWaiterStateError extends AthenaQueryExecutionWa
   constructor(public readonly state: QueryExecutionState, public readonly reason: string = 'unknown') {
     super(`Athena query execution failed with state ${state}: ${reason}`);
     this.name = 'AthenaQueryExecutionWaiterStateError';
+  }
+}
+
+/**
+ * Thrown when GetQueryExecution response lacks QueryExecution, Status, or State.
+ */
+export class AthenaQueryExecutionWaiterMissingStateError extends AthenaQueryExecutionWaiterError {
+
+  /**
+   * @param detail Which part of the response was missing
+   */
+  constructor(public readonly detail: string) {
+    super(`Athena query execution status is missing or incomplete: ${detail}`);
+    this.name = 'AthenaQueryExecutionWaiterMissingStateError';
+  }
+}
+
+/**
+ * Thrown when State is present but not a known {@link QueryExecutionState} value.
+ */
+export class AthenaQueryExecutionWaiterUnsupportedStateError extends AthenaQueryExecutionWaiterError {
+
+  /**
+   * @param state Unsupported state string returned by Athena
+   */
+  constructor(public readonly state: string) {
+    super(`Athena query execution returned unsupported state: ${state}`);
+    this.name = 'AthenaQueryExecutionWaiterUnsupportedStateError';
   }
 }
