@@ -18,6 +18,31 @@ const DEFAULT_POLL_INTERVAL_MS = 1000;
  */
 export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1000;
 
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (signal?.aborted) {
+    throw new AthenaQueryExecutionWaiterAbortedError(signal);
+  }
+};
+
+const delay = async (ms: number, signal?: AbortSignal): Promise<void> => {
+  throwIfAborted(signal);
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      cleanup();
+      reject(new AthenaQueryExecutionWaiterAbortedError(signal));
+    };
+    const cleanup = (): void => {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    signal?.addEventListener('abort', onAbort);
+  });
+};
+
 /** Options for AthenaQueryExecutionWaiter constructor. */
 export interface AthenaQueryExecutionWaiterOptions {
   /**
@@ -41,6 +66,11 @@ export interface AthenaQueryExecutionWaitOptions {
    * Overrides the waiter's default poll interval when specified.
    */
   pollIntervalMs?: number;
+  /**
+   * Optional abort signal. When aborted, waiting stops and
+   * {@link AthenaQueryExecutionWaiterAbortedError} is thrown.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -71,6 +101,7 @@ export class AthenaQueryExecutionWaiter {
    * @param waitOptions Optional per-call settings (`timeoutMs`, `pollIntervalMs`)
    * @returns Execution state on success (SUCCEEDED)
    * @throws AthenaQueryExecutionWaiterTimeoutError On timeout
+   * @throws AthenaQueryExecutionWaiterAbortedError When `waitOptions.signal` is aborted
    * @throws AthenaQueryExecutionWaiterStateError When state is FAILED or CANCELLED
    * @throws AthenaQueryExecutionWaiterMissingStateError When QueryExecution or Status.State is missing
    * @throws AthenaQueryExecutionWaiterUnsupportedStateError When state is not a known QueryExecutionState
@@ -81,8 +112,11 @@ export class AthenaQueryExecutionWaiter {
   ): Promise<QueryExecutionState> {
     const effectiveTimeoutMs = waitOptions?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const pollIntervalMs = waitOptions?.pollIntervalMs ?? this.defaultPollIntervalMs;
+    const signal = waitOptions?.signal;
     const startTime = Date.now();
     do {
+      throwIfAborted(signal);
+
       const elapsedTime = Date.now() - startTime;
       if (elapsedTime > effectiveTimeoutMs) {
         throw new AthenaQueryExecutionWaiterTimeoutError(elapsedTime);
@@ -91,6 +125,8 @@ export class AthenaQueryExecutionWaiter {
       const res = await this.client.send(new GetQueryExecutionCommand({
         QueryExecutionId: queryExecutionId,
       }));
+      throwIfAborted(signal);
+
       const outcome = classifyQueryExecutionPoll(res);
 
       if (outcome.kind === 'succeeded') {
@@ -106,7 +142,7 @@ export class AthenaQueryExecutionWaiter {
         throw new AthenaQueryExecutionWaiterUnsupportedStateError(outcome.state);
       }
 
-      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      await delay(pollIntervalMs, signal);
     } while (true);
   }
 }
@@ -122,6 +158,20 @@ export class AthenaQueryExecutionWaiterError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AthenaQueryExecutionWaiterError';
+  }
+}
+
+/**
+ * Thrown when waiting is aborted via {@link AbortSignal}.
+ */
+export class AthenaQueryExecutionWaiterAbortedError extends AthenaQueryExecutionWaiterError {
+
+  /**
+   * @param signal Abort signal that triggered cancellation
+   */
+  constructor(public readonly signal?: AbortSignal) {
+    super('Athena query execution wait was aborted');
+    this.name = 'AthenaQueryExecutionWaiterAbortedError';
   }
 }
 
