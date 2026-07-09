@@ -1,14 +1,14 @@
 import { GetQueryExecutionCommand, QueryExecutionState, AthenaClient } from '@aws-sdk/client-athena';
-import { classifyQueryExecutionPoll } from './wait-predicates';
+import { classifyQueryExecutionWait } from './wait-predicates';
 
-/** Default polling interval (milliseconds) for query execution status. */
-const DEFAULT_POLL_INTERVAL_MS = 1000;
+/** Default wait interval (milliseconds) between status checks. */
+const DEFAULT_WAIT_INTERVAL_MS = 1000;
 
 /**
  * Default overall wait timeout (milliseconds) when `wait()` is called without
  * `waitOptions.timeoutMs`.
  * This caps total wall-clock time from the start of `wait()` until a terminal state
- * (or error)—it is not the delay between polls (`pollIntervalMs`).
+ * (or error)—it is not the delay between status checks (`waitIntervalMs`).
  *
  * **Why 2 minutes:** Athena often exceeds a few seconds (queueing, cold start, moderate
  * scans). Ten seconds fails too often as a library default; unbounded or very large
@@ -46,26 +46,26 @@ const delay = async (ms: number, signal?: AbortSignal): Promise<void> => {
 /** Options for AthenaQueryExecutionWaiter constructor. */
 export interface AthenaQueryExecutionWaiterOptions {
   /**
-   * Polling interval in milliseconds.
+   * Wait interval in milliseconds between status checks.
    * Increase for long-running queries to reduce API calls.
-   * Defaults to DEFAULT_POLL_INTERVAL_MS (1000) when omitted.
+   * Defaults to DEFAULT_WAIT_INTERVAL_MS (1000) when omitted.
    */
-  pollIntervalMs?: number;
+  waitIntervalMs?: number;
 }
 
 /** Options for wait(). */
 export interface AthenaQueryExecutionWaitOptions {
   /**
    * Overall wall-clock timeout in milliseconds for this wait (from the start of `wait()`
-   * until a terminal state). Not the delay between polls.
+   * until a terminal state). Not the delay between status checks.
    * Defaults to {@link DEFAULT_TIMEOUT_MS} when omitted.
    */
   timeoutMs?: number;
   /**
-   * Polling interval in milliseconds for this wait.
-   * Overrides the waiter's default poll interval when specified.
+   * Wait interval in milliseconds between status checks for this wait.
+   * Overrides the waiter's default wait interval when specified.
    */
-  pollIntervalMs?: number;
+  waitIntervalMs?: number;
   /**
    * Optional abort signal. When aborted, waiting stops and
    * {@link AthenaQueryExecutionWaiterAbortedError} is thrown.
@@ -75,30 +75,30 @@ export interface AthenaQueryExecutionWaitOptions {
 
 /**
  * Waits for Athena query execution to complete.
- * Polls execution status until it becomes SUCCEEDED, FAILED, or CANCELLED.
+ * Repeatedly checks execution status until it becomes SUCCEEDED, FAILED, or CANCELLED.
  * Overall time is bounded by `waitOptions.timeoutMs` (or {@link DEFAULT_TIMEOUT_MS});
- * spacing between polls is controlled separately by `pollIntervalMs`.
+ * spacing between status checks is controlled separately by `waitIntervalMs`.
  */
 export class AthenaQueryExecutionWaiter {
 
-  private readonly defaultPollIntervalMs: number;
+  private readonly defaultWaitIntervalMs: number;
 
   /**
    * @param client Athena API client
-   * @param options Optional settings (e.g. pollIntervalMs)
+   * @param options Optional settings (e.g. waitIntervalMs)
    */
   constructor(
     private readonly client: AthenaClient,
     options?: AthenaQueryExecutionWaiterOptions,
   ) {
-    this.defaultPollIntervalMs = options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.defaultWaitIntervalMs = options?.waitIntervalMs ?? DEFAULT_WAIT_INTERVAL_MS;
   }
 
   /**
    * Waits until the given query execution completes (or fails/cancels).
    *
    * @param queryExecutionId Query execution ID to wait for
-   * @param waitOptions Optional per-call settings (`timeoutMs`, `pollIntervalMs`)
+   * @param waitOptions Optional per-call settings (`timeoutMs`, `waitIntervalMs`)
    * @returns Execution state on success (SUCCEEDED)
    * @throws AthenaQueryExecutionWaiterTimeoutError On timeout
    * @throws AthenaQueryExecutionWaiterAbortedError When `waitOptions.signal` is aborted
@@ -111,7 +111,7 @@ export class AthenaQueryExecutionWaiter {
     waitOptions?: AthenaQueryExecutionWaitOptions,
   ): Promise<QueryExecutionState> {
     const effectiveTimeoutMs = waitOptions?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const pollIntervalMs = waitOptions?.pollIntervalMs ?? this.defaultPollIntervalMs;
+    const waitIntervalMs = waitOptions?.waitIntervalMs ?? this.defaultWaitIntervalMs;
     const signal = waitOptions?.signal;
     const startTime = Date.now();
     do {
@@ -127,7 +127,7 @@ export class AthenaQueryExecutionWaiter {
       }));
       throwIfAborted(signal);
 
-      const outcome = classifyQueryExecutionPoll(res);
+      const outcome = classifyQueryExecutionWait(res);
 
       if (outcome.kind === 'succeeded') {
         return QueryExecutionState.SUCCEEDED;
@@ -142,7 +142,7 @@ export class AthenaQueryExecutionWaiter {
         throw new AthenaQueryExecutionWaiterUnsupportedStateError(outcome.state);
       }
 
-      await delay(pollIntervalMs, signal);
+      await delay(waitIntervalMs, signal);
     } while (true);
   }
 }

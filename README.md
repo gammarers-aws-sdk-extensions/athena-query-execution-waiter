@@ -3,12 +3,12 @@
 [![npm version](https://img.shields.io/npm/v/athena-query-execution-waiter.svg)](https://www.npmjs.com/package/athena-query-execution-waiter)
 [![License](https://img.shields.io/npm/l/athena-query-execution-waiter.svg)](https://github.com/gammarers-aws-sdk-extensions/athena-query-execution-waiter/blob/main/LICENSE)
 
-A small library that waits for an AWS Athena query execution to complete. It polls the Athena API until the execution reaches a terminal state: **SUCCEEDED**, **FAILED**, or **CANCELLED**.
+A small library that waits for an AWS Athena query execution to complete. It repeatedly calls the Athena API until the execution reaches a terminal state: **SUCCEEDED**, **FAILED**, or **CANCELLED**.
 
 ## Features
 
-- Polls `GetQueryExecution` until the run finishes or an **overall wall-clock timeout** is exceeded (separate from **polling interval**).
-- Configurable **overall timeout** and **poll spacing** via `wait()` options; default overall cap is **`DEFAULT_TIMEOUT_MS`** (2 minutes).
+- Waits on `GetQueryExecution` until the run finishes or an **overall wall-clock timeout** is exceeded (separate from **wait interval**).
+- Configurable **overall timeout** and **wait interval** via `wait()` options; default overall cap is **`DEFAULT_TIMEOUT_MS`** (2 minutes).
 - Typed errors: **`AthenaQueryExecutionWaiterTimeoutError`**, **`AthenaQueryExecutionWaiterStateError`** (failed or cancelled runs), **`AthenaQueryExecutionWaiterMissingStateError`**, **`AthenaQueryExecutionWaiterUnsupportedStateError`**.
 - Built for **AWS SDK for JavaScript v3** (`@aws-sdk/client-athena`).
 
@@ -64,12 +64,12 @@ try {
 }
 ```
 
-### Overall timeout vs polling interval
+### Overall timeout vs wait interval
 
 | | Meaning |
 |---|--------|
-| **`waitOptions.timeoutMs` / `DEFAULT_TIMEOUT_MS`** | **Overall** wall-clock limit from when `wait()` starts until **SUCCEEDED**, **FAILED**, or **CANCELLED** (or this cap is exceeded). Omit `timeoutMs` to use `DEFAULT_TIMEOUT_MS`. This is **not** how often Athena is polled. |
-| **`pollIntervalMs`** | Delay **between** `GetQueryExecution` calls. Independent of the overall timeout; a long poll interval still respects `waitOptions.timeoutMs` / `DEFAULT_TIMEOUT_MS`. |
+| **`waitOptions.timeoutMs` / `DEFAULT_TIMEOUT_MS`** | **Overall** wall-clock limit from when `wait()` starts until **SUCCEEDED**, **FAILED**, or **CANCELLED** (or this cap is exceeded). Omit `timeoutMs` to use `DEFAULT_TIMEOUT_MS`. This is **not** how often status is checked. |
+| **`waitIntervalMs`** | Delay **between** `GetQueryExecution` calls. Independent of the overall timeout; a long wait interval still respects `waitOptions.timeoutMs` / `DEFAULT_TIMEOUT_MS`. |
 
 Long-running jobs should pass a higher `timeoutMs` when needed:
 
@@ -79,14 +79,14 @@ const state = await waiter.wait(queryExecutionId, {
 });
 ```
 
-Default polling interval is **1 second**. Increase it to reduce API calls (constructor or per `wait()`):
+Default wait interval is **1 second**. Increase it to reduce API calls (constructor or per `wait()`):
 
 ```typescript
-const waiter = new AthenaQueryExecutionWaiter(client, { pollIntervalMs: 5000 });
+const waiter = new AthenaQueryExecutionWaiter(client, { waitIntervalMs: 5000 });
 
 const state = await waiter.wait(queryExecutionId, {
   timeoutMs: 60_000,
-  pollIntervalMs: 3000,
+  waitIntervalMs: 3000,
 });
 ```
 
@@ -98,7 +98,7 @@ Passed to `new AthenaQueryExecutionWaiter(client, options?)`.
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `pollIntervalMs` | `number` (optional) | Default milliseconds **between** `GetQueryExecution` calls when `wait()` omits `pollIntervalMs`. Default: `1000`. |
+| `waitIntervalMs` | `number` (optional) | Default milliseconds **between** `GetQueryExecution` calls when `wait()` omits `waitIntervalMs`. Default: `1000`. |
 
 ### `AthenaQueryExecutionWaitOptions` (`wait()`)
 
@@ -107,7 +107,7 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
 | Option | Type | Description |
 |--------|------|-------------|
 | `timeoutMs` | `number` (optional) | **Overall** wall-clock timeout in ms from the start of `wait()` until a terminal state. Default: `DEFAULT_TIMEOUT_MS` (**2 minutes**). |
-| `pollIntervalMs` | `number` (optional) | Milliseconds **between** polls for this call. Default: constructor’s `pollIntervalMs` or `1000`. |
+| `waitIntervalMs` | `number` (optional) | Milliseconds **between** status checks for this call. Default: constructor’s `waitIntervalMs` or `1000`. |
 
 ## API reference
 
@@ -118,7 +118,7 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
   - **Returns** `SUCCEEDED` on success.
   - **Throws** `AthenaQueryExecutionWaiterTimeoutError` if overall wait exceeds the effective timeout.
   - **Throws** `AthenaQueryExecutionWaiterStateError` when the state is `FAILED` or `CANCELLED`.
-  - **Throws** `AthenaQueryExecutionWaiterMissingStateError` when `QueryExecution`, `Status`, or `State` is missing from the API response (fail-fast; no polling until timeout).
+  - **Throws** `AthenaQueryExecutionWaiterMissingStateError` when `QueryExecution`, `Status`, or `State` is missing from the API response (fail-fast; does not keep waiting until timeout).
   - **Throws** `AthenaQueryExecutionWaiterUnsupportedStateError` when `State` is present but not a known `QueryExecutionState` (e.g. a future Athena enum value).
 
 ### Constants
@@ -130,8 +130,8 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
 - **`AthenaQueryExecutionWaiterError`** — Base class for waiter errors.
 - **`AthenaQueryExecutionWaiterTimeoutError`** — Overall elapsed time since `wait()` started exceeded `waitOptions.timeoutMs` or `DEFAULT_TIMEOUT_MS`. Constructor: `(elapsedTime: number)`.
 - **`AthenaQueryExecutionWaiterStateError`** — Query ended in `FAILED` or `CANCELLED`. Properties: `state`, `reason`. Constructor: `(state: QueryExecutionState, reason?: string)`.
-- **`AthenaQueryExecutionWaiterMissingStateError`** — `GetQueryExecution` response is missing `QueryExecution`, `Status`, or `State`. Property: `detail`. Fails on the first poll.
-- **`AthenaQueryExecutionWaiterUnsupportedStateError`** — `State` is not one of the known values (`QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`). Property: `state`. Fails on the first poll.
+- **`AthenaQueryExecutionWaiterMissingStateError`** — `GetQueryExecution` response is missing `QueryExecution`, `Status`, or `State`. Property: `detail`. Fails on the first status check.
+- **`AthenaQueryExecutionWaiterUnsupportedStateError`** — `State` is not one of the known values (`QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`). Property: `state`. Fails on the first status check.
 
 ## License
 

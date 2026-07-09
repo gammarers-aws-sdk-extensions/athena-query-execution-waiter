@@ -1,11 +1,11 @@
 import { QueryExecutionState } from '@aws-sdk/client-athena';
 import {
-  classifyQueryExecutionPoll,
-  shouldContinuePolling,
-  type QueryExecutionPollResponse,
+  classifyQueryExecutionWait,
+  shouldContinueWaiting,
+  type QueryExecutionWaitResponse,
 } from '../src/wait-predicates';
 
-describe('classifyQueryExecutionPoll', () => {
+describe('classifyQueryExecutionWait', () => {
   it.each([
     {
       label: 'SUCCEEDED',
@@ -61,20 +61,20 @@ describe('classifyQueryExecutionPoll', () => {
     },
   ] satisfies ReadonlyArray<{
     label: string;
-    response: QueryExecutionPollResponse;
-    expected: ReturnType<typeof classifyQueryExecutionPoll>;
+    response: QueryExecutionWaitResponse;
+    expected: ReturnType<typeof classifyQueryExecutionWait>;
   }>)('returns $expected.kind for $label', ({ response, expected }) => {
-    expect(classifyQueryExecutionPoll(response)).toEqual(expected);
+    expect(classifyQueryExecutionWait(response)).toEqual(expected);
   });
 });
 
-describe('shouldContinuePolling', () => {
+describe('shouldContinueWaiting', () => {
   it.each([
     { outcome: { kind: 'continue' as const }, expected: true },
     { outcome: { kind: 'succeeded' as const }, expected: false },
     { outcome: { kind: 'missing' as const, detail: 'x' }, expected: false },
     { outcome: { kind: 'unsupported' as const, state: 'X' }, expected: false },
   ])('returns $expected when kind is $outcome.kind', ({ outcome, expected }) => {
-    expect(shouldContinuePolling(outcome)).toBe(expected);
+    expect(shouldContinueWaiting(outcome)).toBe(expected);
   });
 });

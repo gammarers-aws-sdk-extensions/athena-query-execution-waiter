@@ -1,7 +1,7 @@
 import { QueryExecutionState } from '@aws-sdk/client-athena';
 
-/** Minimal GetQueryExecution shape used for polling (State may be unknown at runtime). */
-export interface QueryExecutionPollResponse {
+/** Minimal GetQueryExecution shape used while waiting (State may be unknown at runtime). */
+export interface QueryExecutionWaitResponse {
   QueryExecution?: {
     Status?: {
       State?: string;
@@ -10,8 +10,8 @@ export interface QueryExecutionPollResponse {
   };
 }
 
-/** Result of classifying a single GetQueryExecution poll. */
-export type QueryExecutionPollOutcome =
+/** Result of classifying a single GetQueryExecution response during a wait. */
+export type QueryExecutionWaitOutcome =
   | { readonly kind: 'succeeded' }
   | {
     readonly kind: 'failed';
@@ -28,14 +28,14 @@ const IN_PROGRESS_STATES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Classifies GetQueryExecution response for the waiter poll loop.
+ * Classifies GetQueryExecution response for the waiter loop.
  *
  * @param response GetQueryExecution API response (or subset)
- * @returns How the waiter should proceed for this poll
+ * @returns How the waiter should proceed for this status check
  */
-export const classifyQueryExecutionPoll = (
-  response: QueryExecutionPollResponse,
-): QueryExecutionPollOutcome => {
+export const classifyQueryExecutionWait = (
+  response: QueryExecutionWaitResponse,
+): QueryExecutionWaitOutcome => {
   const queryExecution = response.QueryExecution;
   if (queryExecution === undefined) {
     return {
@@ -87,8 +87,8 @@ export const classifyQueryExecutionPoll = (
 };
 
 /**
- * @param outcome Outcome from {@link classifyQueryExecutionPoll}
- * @returns Whether the waiter should poll again after the interval
+ * @param outcome Outcome from {@link classifyQueryExecutionWait}
+ * @returns Whether the waiter should continue waiting after the interval
  */
-export const shouldContinuePolling = (outcome: QueryExecutionPollOutcome): boolean =>
+export const shouldContinueWaiting = (outcome: QueryExecutionWaitOutcome): boolean =>
   outcome.kind === 'continue';
