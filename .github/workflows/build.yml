@@ -25,7 +25,7 @@ jobs:
           node-version: 24.x
           package-manager-cache: false
       - name: Install dependencies
-        run: yarn install --check-files
+        run: npm install
       - name: build
         run: npx projen build
       - name: Find mutations

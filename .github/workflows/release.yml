@@ -41,7 +41,7 @@ jobs:
           node-version: 24.x
           package-manager-cache: false
       - name: Install dependencies
-        run: yarn install --check-files --frozen-lockfile
+        run: npm ci
       - name: release
         run: npx projen release
       - name: Check if version has already been tagged
