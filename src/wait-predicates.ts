@@ -1,7 +1,10 @@
 import { QueryExecutionState } from '@aws-sdk/client-athena';
 
-/** Minimal GetQueryExecution shape used for polling (State may be unknown at runtime). */
-export interface QueryExecutionPollResponse {
+/**
+ * Minimal `GetQueryExecution` response shape used while waiting.
+ * `State` may be an unknown string at runtime.
+ */
+export interface QueryExecutionWaitResponse {
   QueryExecution?: {
     Status?: {
       State?: string;
@@ -10,8 +13,16 @@ export interface QueryExecutionPollResponse {
   };
 }
 
-/** Result of classifying a single GetQueryExecution poll. */
-export type QueryExecutionPollOutcome =
+/**
+ * Result of classifying a single `GetQueryExecution` response during a wait.
+ *
+ * - `succeeded` — execution completed successfully
+ * - `failed` — execution ended in `FAILED` or `CANCELLED`
+ * - `continue` — execution is still in progress (`QUEUED` or `RUNNING`)
+ * - `missing` — required fields are absent from the response
+ * - `unsupported` — `State` is not a known {@link QueryExecutionState}
+ */
+export type QueryExecutionWaitOutcome =
   | { readonly kind: 'succeeded' }
   | {
     readonly kind: 'failed';
@@ -22,20 +33,21 @@ export type QueryExecutionPollOutcome =
   | { readonly kind: 'missing'; readonly detail: string }
   | { readonly kind: 'unsupported'; readonly state: string };
 
+/** Execution states that require further waiting before a terminal outcome. */
 const IN_PROGRESS_STATES: ReadonlySet<string> = new Set([
   QueryExecutionState.QUEUED,
   QueryExecutionState.RUNNING,
 ]);
 
 /**
- * Classifies GetQueryExecution response for the waiter poll loop.
+ * Classifies a `GetQueryExecution` response for the waiter loop.
  *
- * @param response GetQueryExecution API response (or subset)
- * @returns How the waiter should proceed for this poll
+ * @param response `GetQueryExecution` API response (or a compatible subset)
+ * @returns How the waiter should proceed for this status check
  */
-export const classifyQueryExecutionPoll = (
-  response: QueryExecutionPollResponse,
-): QueryExecutionPollOutcome => {
+export const classifyQueryExecutionWait = (
+  response: QueryExecutionWaitResponse,
+): QueryExecutionWaitOutcome => {
   const queryExecution = response.QueryExecution;
   if (queryExecution === undefined) {
     return {
@@ -87,8 +99,10 @@ export const classifyQueryExecutionPoll = (
 };
 
 /**
- * @param outcome Outcome from {@link classifyQueryExecutionPoll}
- * @returns Whether the waiter should poll again after the interval
+ * Returns whether the waiter should perform another status check after the wait interval.
+ *
+ * @param outcome Outcome from {@link classifyQueryExecutionWait}
+ * @returns `true` when `outcome.kind` is `'continue'`; otherwise `false`
  */
-export const shouldContinuePolling = (outcome: QueryExecutionPollOutcome): boolean =>
+export const shouldContinueWaiting = (outcome: QueryExecutionWaitOutcome): boolean =>
   outcome.kind === 'continue';

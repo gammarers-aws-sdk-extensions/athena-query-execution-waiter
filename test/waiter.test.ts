@@ -1,5 +1,6 @@
 import {
   AthenaQueryExecutionWaiter,
+  AthenaQueryExecutionWaiterAbortedError,
   AthenaQueryExecutionWaiterMissingStateError,
   AthenaQueryExecutionWaiterStateError,
   AthenaQueryExecutionWaiterTimeoutError,
@@ -142,7 +143,7 @@ describe('AthenaQueryExecutionWaiter', () => {
 
       let err: unknown;
       try {
-        await waiter.wait(queryExecutionId, { timeoutMs, pollIntervalMs: 10 });
+        await waiter.wait(queryExecutionId, { timeoutMs, waitIntervalMs: 10 });
       } catch (e) {
         err = e;
       }
@@ -158,7 +159,7 @@ describe('AthenaQueryExecutionWaiter', () => {
         },
       });
       const client = { send: mockSend } as any;
-      const waiter = new AthenaQueryExecutionWaiter(client, { pollIntervalMs: 10 });
+      const waiter = new AthenaQueryExecutionWaiter(client, { waitIntervalMs: 10 });
 
       let err: unknown;
       try {
@@ -170,8 +171,8 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(mockSend).toHaveBeenCalled();
     });
 
-    it('should use pollIntervalMs from constructor options', async () => {
-      const pollIntervalMs = 200;
+    it('should use waitIntervalMs from constructor options', async () => {
+      const waitIntervalMs = 200;
       const mockSend = jest
         .fn()
         .mockResolvedValueOnce({
@@ -181,13 +182,13 @@ describe('AthenaQueryExecutionWaiter', () => {
           QueryExecution: { Status: { State: 'SUCCEEDED' } },
         });
       const client = { send: mockSend } as any;
-      const waiter = new AthenaQueryExecutionWaiter(client, { pollIntervalMs });
+      const waiter = new AthenaQueryExecutionWaiter(client, { waitIntervalMs });
 
       jest.useFakeTimers();
       const p = waiter.wait(queryExecutionId);
       await Promise.resolve();
       expect(mockSend).toHaveBeenCalledTimes(1);
-      jest.advanceTimersByTime(pollIntervalMs);
+      jest.advanceTimersByTime(waitIntervalMs);
       const result = await p;
       jest.useRealTimers();
 
@@ -195,7 +196,7 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(mockSend).toHaveBeenCalledTimes(2);
     });
 
-    it('should use pollIntervalMs from wait() options and override constructor default', async () => {
+    it('should use waitIntervalMs from wait() options and override constructor default', async () => {
       const mockSend = jest
         .fn()
         .mockResolvedValueOnce({
@@ -205,22 +206,87 @@ describe('AthenaQueryExecutionWaiter', () => {
           QueryExecution: { Status: { State: 'SUCCEEDED' } },
         });
       const client = { send: mockSend } as any;
-      const waiter = new AthenaQueryExecutionWaiter(client, { pollIntervalMs: 5000 });
-      const callPollIntervalMs = 150;
+      const waiter = new AthenaQueryExecutionWaiter(client, { waitIntervalMs: 5000 });
+      const callWaitIntervalMs = 150;
 
       jest.useFakeTimers();
       const p = waiter.wait(queryExecutionId, {
         timeoutMs: 10000,
-        pollIntervalMs: callPollIntervalMs,
+        waitIntervalMs: callWaitIntervalMs,
       });
       await Promise.resolve();
       expect(mockSend).toHaveBeenCalledTimes(1);
-      jest.advanceTimersByTime(callPollIntervalMs);
+      jest.advanceTimersByTime(callWaitIntervalMs);
       const result = await p;
       jest.useRealTimers();
 
       expect(result).toBe('SUCCEEDED');
       expect(mockSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('should throw AthenaQueryExecutionWaiterAbortedError when signal is already aborted', async () => {
+      const mockSend = jest.fn().mockResolvedValue({
+        QueryExecution: {
+          Status: { State: 'RUNNING' },
+        },
+      });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client);
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        waiter.wait(queryExecutionId, { signal: controller.signal }),
+      ).rejects.toBeInstanceOf(AthenaQueryExecutionWaiterAbortedError);
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('should throw AthenaQueryExecutionWaiterAbortedError when signal is aborted during wait interval', async () => {
+      const mockSend = jest.fn().mockResolvedValue({
+        QueryExecution: {
+          Status: { State: 'RUNNING' },
+        },
+      });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client);
+      const controller = new AbortController();
+      const waitIntervalMs = 200;
+
+      jest.useFakeTimers();
+      const p = waiter.wait(queryExecutionId, {
+        waitIntervalMs,
+        signal: controller.signal,
+      });
+      await Promise.resolve();
+      expect(mockSend).toHaveBeenCalledTimes(1);
+
+      controller.abort();
+      jest.advanceTimersByTime(waitIntervalMs);
+
+      await expect(p).rejects.toBeInstanceOf(AthenaQueryExecutionWaiterAbortedError);
+      jest.useRealTimers();
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw AthenaQueryExecutionWaiterAbortedError when signal is aborted after API response', async () => {
+      const controller = new AbortController();
+      const mockSend = jest
+        .fn()
+        .mockImplementation(async () => {
+          controller.abort();
+          return {
+            QueryExecution: {
+              Status: { State: 'RUNNING' },
+            },
+          };
+        });
+      const client = { send: mockSend } as any;
+      const waiter = new AthenaQueryExecutionWaiter(client);
+
+      await expect(
+        waiter.wait(queryExecutionId, { signal: controller.signal }),
+      ).rejects.toBeInstanceOf(AthenaQueryExecutionWaiterAbortedError);
+      expect(mockSend).toHaveBeenCalledTimes(1);
     });
   });
 });
