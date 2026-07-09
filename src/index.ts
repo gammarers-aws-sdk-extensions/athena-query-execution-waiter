@@ -1,7 +1,7 @@
 import { GetQueryExecutionCommand, QueryExecutionState, AthenaClient } from '@aws-sdk/client-athena';
 import { classifyQueryExecutionWait } from './wait-predicates';
 
-/** Default wait interval (milliseconds) between status checks. */
+/** Default wait interval in milliseconds between status checks. */
 const DEFAULT_WAIT_INTERVAL_MS = 1000;
 
 /**
@@ -18,12 +18,25 @@ const DEFAULT_WAIT_INTERVAL_MS = 1000;
  */
 export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1000;
 
+/**
+ * Throws {@link AthenaQueryExecutionWaiterAbortedError} when `signal` is already aborted.
+ *
+ * @param signal Optional abort signal from `wait()` options
+ * @throws AthenaQueryExecutionWaiterAbortedError When `signal.aborted` is true
+ */
 const throwIfAborted = (signal?: AbortSignal): void => {
   if (signal?.aborted) {
     throw new AthenaQueryExecutionWaiterAbortedError(signal);
   }
 };
 
+/**
+ * Waits for `ms` milliseconds, rejecting early when `signal` is aborted.
+ *
+ * @param ms Delay in milliseconds
+ * @param signal Optional abort signal from `wait()` options
+ * @throws AthenaQueryExecutionWaiterAbortedError When `signal` is aborted before or during the delay
+ */
 const delay = async (ms: number, signal?: AbortSignal): Promise<void> => {
   throwIfAborted(signal);
   await new Promise<void>((resolve, reject) => {
@@ -43,17 +56,18 @@ const delay = async (ms: number, signal?: AbortSignal): Promise<void> => {
   });
 };
 
-/** Options for AthenaQueryExecutionWaiter constructor. */
+/** Constructor options for {@link AthenaQueryExecutionWaiter}. */
 export interface AthenaQueryExecutionWaiterOptions {
   /**
-   * Wait interval in milliseconds between status checks.
+   * Default wait interval in milliseconds between status checks for `wait()` calls
+   * that omit `waitIntervalMs`.
    * Increase for long-running queries to reduce API calls.
-   * Defaults to DEFAULT_WAIT_INTERVAL_MS (1000) when omitted.
+   * Defaults to `1000` when omitted.
    */
   waitIntervalMs?: number;
 }
 
-/** Options for wait(). */
+/** Per-call options for {@link AthenaQueryExecutionWaiter.wait}. */
 export interface AthenaQueryExecutionWaitOptions {
   /**
    * Overall wall-clock timeout in milliseconds for this wait (from the start of `wait()`
@@ -67,17 +81,20 @@ export interface AthenaQueryExecutionWaitOptions {
    */
   waitIntervalMs?: number;
   /**
-   * Optional abort signal. When aborted, waiting stops and
-   * {@link AthenaQueryExecutionWaiterAbortedError} is thrown.
+   * Optional abort signal. When aborted, waiting stops immediately and
+   * {@link AthenaQueryExecutionWaiterAbortedError} is thrown—before the next status
+   * check, after a status check returns, or during the wait interval.
    */
   signal?: AbortSignal;
 }
 
 /**
- * Waits for Athena query execution to complete.
- * Repeatedly checks execution status until it becomes SUCCEEDED, FAILED, or CANCELLED.
- * Overall time is bounded by `waitOptions.timeoutMs` (or {@link DEFAULT_TIMEOUT_MS});
- * spacing between status checks is controlled separately by `waitIntervalMs`.
+ * Waits for an Athena query execution to reach a terminal state.
+ *
+ * Repeatedly calls `GetQueryExecution` until the execution becomes
+ * `SUCCEEDED`, `FAILED`, or `CANCELLED`. Overall wall-clock time is bounded by
+ * `waitOptions.timeoutMs` (or {@link DEFAULT_TIMEOUT_MS}); spacing between status
+ * checks is controlled separately by `waitIntervalMs`.
  */
 export class AthenaQueryExecutionWaiter {
 
@@ -95,16 +112,16 @@ export class AthenaQueryExecutionWaiter {
   }
 
   /**
-   * Waits until the given query execution completes (or fails/cancels).
+   * Waits until the given query execution completes, fails, or is cancelled.
    *
-   * @param queryExecutionId Query execution ID to wait for
-   * @param waitOptions Optional per-call settings (`timeoutMs`, `waitIntervalMs`)
-   * @returns Execution state on success (SUCCEEDED)
-   * @throws AthenaQueryExecutionWaiterTimeoutError On timeout
+   * @param queryExecutionId Query execution ID returned by `StartQueryExecution`
+   * @param waitOptions Optional per-call settings (`timeoutMs`, `waitIntervalMs`, `signal`)
+   * @returns `QueryExecutionState.SUCCEEDED` when the query completes successfully
+   * @throws AthenaQueryExecutionWaiterTimeoutError When overall wait exceeds the effective timeout
    * @throws AthenaQueryExecutionWaiterAbortedError When `waitOptions.signal` is aborted
-   * @throws AthenaQueryExecutionWaiterStateError When state is FAILED or CANCELLED
-   * @throws AthenaQueryExecutionWaiterMissingStateError When QueryExecution or Status.State is missing
-   * @throws AthenaQueryExecutionWaiterUnsupportedStateError When state is not a known QueryExecutionState
+   * @throws AthenaQueryExecutionWaiterStateError When the final state is `FAILED` or `CANCELLED`
+   * @throws AthenaQueryExecutionWaiterMissingStateError When `QueryExecution`, `Status`, or `State` is missing
+   * @throws AthenaQueryExecutionWaiterUnsupportedStateError When `State` is not a known {@link QueryExecutionState}
    */
   async wait(
     queryExecutionId: string,
@@ -163,11 +180,13 @@ export class AthenaQueryExecutionWaiterError extends Error {
 
 /**
  * Thrown when waiting is aborted via {@link AbortSignal}.
+ *
+ * @property signal Abort signal that triggered cancellation, if available
  */
 export class AthenaQueryExecutionWaiterAbortedError extends AthenaQueryExecutionWaiterError {
 
   /**
-   * @param signal Abort signal that triggered cancellation
+   * @param signal Abort signal that triggered cancellation, if available
    */
   constructor(public readonly signal?: AbortSignal) {
     super('Athena query execution wait was aborted');
@@ -176,7 +195,7 @@ export class AthenaQueryExecutionWaiterAbortedError extends AthenaQueryExecution
 }
 
 /**
- * Thrown when waiting for query execution times out.
+ * Thrown when the overall wait exceeds `timeoutMs` or {@link DEFAULT_TIMEOUT_MS}.
  */
 export class AthenaQueryExecutionWaiterTimeoutError extends AthenaQueryExecutionWaiterError {
 
@@ -190,13 +209,16 @@ export class AthenaQueryExecutionWaiterTimeoutError extends AthenaQueryExecution
 }
 
 /**
- * Thrown when the query ends in FAILED or CANCELLED state.
+ * Thrown when the query ends in `FAILED` or `CANCELLED` state.
+ *
+ * @property state Terminal execution state (`FAILED` or `CANCELLED`)
+ * @property reason Athena-provided reason for the state change, or `'unknown'` when omitted
  */
 export class AthenaQueryExecutionWaiterStateError extends AthenaQueryExecutionWaiterError {
 
   /**
-   * @param state Final execution state (FAILED or CANCELLED)
-   * @param reason Reason for the state change (e.g. error details). Defaults to 'unknown' when omitted
+   * @param state Final execution state (`FAILED` or `CANCELLED`)
+   * @param reason Reason for the state change (e.g. error details). Defaults to `'unknown'` when omitted
    */
   constructor(public readonly state: QueryExecutionState, public readonly reason: string = 'unknown') {
     super(`Athena query execution failed with state ${state}: ${reason}`);
@@ -205,7 +227,9 @@ export class AthenaQueryExecutionWaiterStateError extends AthenaQueryExecutionWa
 }
 
 /**
- * Thrown when GetQueryExecution response lacks QueryExecution, Status, or State.
+ * Thrown when `GetQueryExecution` response lacks `QueryExecution`, `Status`, or `State`.
+ *
+ * @property detail Description of which part of the response was missing
  */
 export class AthenaQueryExecutionWaiterMissingStateError extends AthenaQueryExecutionWaiterError {
 
@@ -219,7 +243,9 @@ export class AthenaQueryExecutionWaiterMissingStateError extends AthenaQueryExec
 }
 
 /**
- * Thrown when State is present but not a known {@link QueryExecutionState} value.
+ * Thrown when `State` is present but not a known {@link QueryExecutionState} value.
+ *
+ * @property state Unsupported state string returned by Athena
  */
 export class AthenaQueryExecutionWaiterUnsupportedStateError extends AthenaQueryExecutionWaiterError {
 

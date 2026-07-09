@@ -1,6 +1,9 @@
 import { QueryExecutionState } from '@aws-sdk/client-athena';
 
-/** Minimal GetQueryExecution shape used while waiting (State may be unknown at runtime). */
+/**
+ * Minimal `GetQueryExecution` response shape used while waiting.
+ * `State` may be an unknown string at runtime.
+ */
 export interface QueryExecutionWaitResponse {
   QueryExecution?: {
     Status?: {
@@ -10,7 +13,15 @@ export interface QueryExecutionWaitResponse {
   };
 }
 
-/** Result of classifying a single GetQueryExecution response during a wait. */
+/**
+ * Result of classifying a single `GetQueryExecution` response during a wait.
+ *
+ * - `succeeded` — execution completed successfully
+ * - `failed` — execution ended in `FAILED` or `CANCELLED`
+ * - `continue` — execution is still in progress (`QUEUED` or `RUNNING`)
+ * - `missing` — required fields are absent from the response
+ * - `unsupported` — `State` is not a known {@link QueryExecutionState}
+ */
 export type QueryExecutionWaitOutcome =
   | { readonly kind: 'succeeded' }
   | {
@@ -22,15 +33,16 @@ export type QueryExecutionWaitOutcome =
   | { readonly kind: 'missing'; readonly detail: string }
   | { readonly kind: 'unsupported'; readonly state: string };
 
+/** Execution states that require further waiting before a terminal outcome. */
 const IN_PROGRESS_STATES: ReadonlySet<string> = new Set([
   QueryExecutionState.QUEUED,
   QueryExecutionState.RUNNING,
 ]);
 
 /**
- * Classifies GetQueryExecution response for the waiter loop.
+ * Classifies a `GetQueryExecution` response for the waiter loop.
  *
- * @param response GetQueryExecution API response (or subset)
+ * @param response `GetQueryExecution` API response (or a compatible subset)
  * @returns How the waiter should proceed for this status check
  */
 export const classifyQueryExecutionWait = (
@@ -87,8 +99,10 @@ export const classifyQueryExecutionWait = (
 };
 
 /**
+ * Returns whether the waiter should perform another status check after the wait interval.
+ *
  * @param outcome Outcome from {@link classifyQueryExecutionWait}
- * @returns Whether the waiter should continue waiting after the interval
+ * @returns `true` when `outcome.kind` is `'continue'`; otherwise `false`
  */
 export const shouldContinueWaiting = (outcome: QueryExecutionWaitOutcome): boolean =>
   outcome.kind === 'continue';
