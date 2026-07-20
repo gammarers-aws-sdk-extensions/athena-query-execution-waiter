@@ -8,6 +8,7 @@
   "scripts": {
     "build": "projen build",
     "bump": "projen bump",
+    "bump:releasable-commits": "projen bump:releasable-commits",
     "clobber": "projen clobber",
     "compile": "projen compile",
     "default": "projen default",
@@ -43,7 +44,7 @@
     "eslint-plugin-import": "^2.32.0",
     "jest": "^30.4.2",
     "jest-junit": "^17",
-    "projen": "^0.101.11",
+    "projen": "^0.101.16",
     "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
     "typescript": "5.9.x"
