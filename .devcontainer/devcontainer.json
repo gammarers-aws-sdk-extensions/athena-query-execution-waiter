@@ -1,14 +1,15 @@
 {
   "name": "dev-athena-query-execution-waiter",
-  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "image": "mcr.microsoft.com/devcontainers/base:trixie",
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
       "username": "developer",
       "upgradePackages": true
     },
     "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "24"
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "24",
+      "npmVersion": "12"
     }
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",

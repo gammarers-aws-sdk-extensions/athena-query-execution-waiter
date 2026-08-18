@@ -148,7 +148,13 @@ describe('AthenaQueryExecutionWaiter', () => {
         err = e;
       }
       expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterTimeoutError);
-      expect((err as Error).message).toMatch(/Athena query timed out after \d+ms/);
+      const timeoutErr = err as AthenaQueryExecutionWaiterTimeoutError;
+      expect(timeoutErr.queryExecutionId).toBe(queryExecutionId);
+      expect(timeoutErr.timeoutMs).toBe(timeoutMs);
+      expect(timeoutErr.elapsedTime).toBeGreaterThan(timeoutMs);
+      expect(timeoutErr.message).toBe(
+        `Athena query execution ${queryExecutionId} timed out after ${timeoutErr.elapsedTime}ms (timeoutMs: ${timeoutMs})`,
+      );
       expect(mockSend).toHaveBeenCalled();
     });
 
@@ -168,6 +174,10 @@ describe('AthenaQueryExecutionWaiter', () => {
         err = e;
       }
       expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterTimeoutError);
+      const timeoutErr = err as AthenaQueryExecutionWaiterTimeoutError;
+      expect(timeoutErr.queryExecutionId).toBe(queryExecutionId);
+      expect(timeoutErr.timeoutMs).toBe(120);
+      expect(timeoutErr.elapsedTime).toBeGreaterThan(120);
       expect(mockSend).toHaveBeenCalled();
     });
 

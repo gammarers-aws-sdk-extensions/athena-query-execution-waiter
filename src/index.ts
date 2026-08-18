@@ -98,11 +98,14 @@ export interface AthenaQueryExecutionWaitOptions {
  */
 export class AthenaQueryExecutionWaiter {
 
+  /** Default wait interval used when `wait()` omits `waitIntervalMs`. */
   private readonly defaultWaitIntervalMs: number;
 
   /**
-   * @param client Athena API client
-   * @param options Optional settings (e.g. waitIntervalMs)
+   * Creates a waiter that checks query execution status via `client`.
+   *
+   * @param client Athena API client used for `GetQueryExecution`
+   * @param options Optional settings. `waitIntervalMs` sets the default delay between status checks
    */
   constructor(
     private readonly client: AthenaClient,
@@ -117,7 +120,7 @@ export class AthenaQueryExecutionWaiter {
    * @param queryExecutionId Query execution ID returned by `StartQueryExecution`
    * @param waitOptions Optional per-call settings (`timeoutMs`, `waitIntervalMs`, `signal`)
    * @returns `QueryExecutionState.SUCCEEDED` when the query completes successfully
-   * @throws AthenaQueryExecutionWaiterTimeoutError When overall wait exceeds the effective timeout
+   * @throws AthenaQueryExecutionWaiterTimeoutError When overall wait exceeds the effective timeout. The error includes `queryExecutionId`, `elapsedTime`, and `timeoutMs`
    * @throws AthenaQueryExecutionWaiterAbortedError When `waitOptions.signal` is aborted
    * @throws AthenaQueryExecutionWaiterStateError When the final state is `FAILED` or `CANCELLED`
    * @throws AthenaQueryExecutionWaiterMissingStateError When `QueryExecution`, `Status`, or `State` is missing
@@ -136,7 +139,11 @@ export class AthenaQueryExecutionWaiter {
 
       const elapsedTime = Date.now() - startTime;
       if (elapsedTime > effectiveTimeoutMs) {
-        throw new AthenaQueryExecutionWaiterTimeoutError(elapsedTime);
+        throw new AthenaQueryExecutionWaiterTimeoutError(
+          queryExecutionId,
+          elapsedTime,
+          effectiveTimeoutMs,
+        );
       }
 
       const res = await this.client.send(new GetQueryExecutionCommand({
@@ -165,11 +172,13 @@ export class AthenaQueryExecutionWaiter {
 }
 
 /**
- * Base error for Athena query execution waiter.
+ * Base class for Athena query execution waiter errors.
  */
 export class AthenaQueryExecutionWaiterError extends Error {
 
   /**
+   * Creates a waiter error with the given message.
+   *
    * @param message Error message
    */
   constructor(message: string) {
@@ -186,6 +195,8 @@ export class AthenaQueryExecutionWaiterError extends Error {
 export class AthenaQueryExecutionWaiterAbortedError extends AthenaQueryExecutionWaiterError {
 
   /**
+   * Creates an error for an aborted wait.
+   *
    * @param signal Abort signal that triggered cancellation, if available
    */
   constructor(public readonly signal?: AbortSignal) {
@@ -196,14 +207,31 @@ export class AthenaQueryExecutionWaiterAbortedError extends AthenaQueryExecution
 
 /**
  * Thrown when the overall wait exceeds `timeoutMs` or {@link DEFAULT_TIMEOUT_MS}.
+ *
+ * The error message and properties include `queryExecutionId`, `elapsedTime`, and
+ * `timeoutMs` so timeouts can be correlated in mixed logs.
+ *
+ * @property queryExecutionId Query execution ID that was being waited on
+ * @property elapsedTime Elapsed wall-clock time in milliseconds when the timeout was detected
+ * @property timeoutMs Effective overall timeout in milliseconds (`waitOptions.timeoutMs` or {@link DEFAULT_TIMEOUT_MS})
  */
 export class AthenaQueryExecutionWaiterTimeoutError extends AthenaQueryExecutionWaiterError {
 
   /**
-   * @param elapsedTime Elapsed time in milliseconds until timeout
+   * Creates a timeout error that includes the query execution ID and timeout context.
+   *
+   * @param queryExecutionId Query execution ID that was being waited on
+   * @param elapsedTime Elapsed wall-clock time in milliseconds when the timeout was detected
+   * @param timeoutMs Effective overall timeout in milliseconds (`waitOptions.timeoutMs` or {@link DEFAULT_TIMEOUT_MS})
    */
-  constructor(elapsedTime: number) {
-    super(`Athena query timed out after ${elapsedTime}ms`);
+  constructor(
+    public readonly queryExecutionId: string,
+    public readonly elapsedTime: number,
+    public readonly timeoutMs: number,
+  ) {
+    super(
+      `Athena query execution ${queryExecutionId} timed out after ${elapsedTime}ms (timeoutMs: ${timeoutMs})`,
+    );
     this.name = 'AthenaQueryExecutionWaiterTimeoutError';
   }
 }
@@ -217,6 +245,8 @@ export class AthenaQueryExecutionWaiterTimeoutError extends AthenaQueryExecution
 export class AthenaQueryExecutionWaiterStateError extends AthenaQueryExecutionWaiterError {
 
   /**
+   * Creates an error for a query that ended in `FAILED` or `CANCELLED`.
+   *
    * @param state Final execution state (`FAILED` or `CANCELLED`)
    * @param reason Reason for the state change (e.g. error details). Defaults to `'unknown'` when omitted
    */
@@ -234,6 +264,8 @@ export class AthenaQueryExecutionWaiterStateError extends AthenaQueryExecutionWa
 export class AthenaQueryExecutionWaiterMissingStateError extends AthenaQueryExecutionWaiterError {
 
   /**
+   * Creates an error for a `GetQueryExecution` response that lacks required status fields.
+   *
    * @param detail Which part of the response was missing
    */
   constructor(public readonly detail: string) {
@@ -250,6 +282,8 @@ export class AthenaQueryExecutionWaiterMissingStateError extends AthenaQueryExec
 export class AthenaQueryExecutionWaiterUnsupportedStateError extends AthenaQueryExecutionWaiterError {
 
   /**
+   * Creates an error for a `State` value that is not a known {@link QueryExecutionState}.
+   *
    * @param state Unsupported state string returned by Athena
    */
   constructor(public readonly state: string) {
