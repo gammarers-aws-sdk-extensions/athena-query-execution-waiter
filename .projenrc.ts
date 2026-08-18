@@ -5,7 +5,7 @@ const project = new typescript.TypeScriptProject({
   defaultReleaseBranch: 'main',
   name: 'athena-query-execution-waiter',
   projenrcTs: true,
-  typescriptVersion: '5.9.x',
+  typescriptVersion: '6.0.x',
   repository: 'https://github.com/gammarers-aws-sdk-extensions/athena-query-execution-waiter.git',
   description: 'A small library that waits for an AWS Athena query execution to complete. It repeatedly checks the Athena API until the execution reaches a terminal state: SUCCEEDED, FAILED, or CANCELLED.',
   keywords: [
