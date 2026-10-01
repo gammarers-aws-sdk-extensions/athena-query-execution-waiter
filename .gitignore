@@ -49,4 +49,6 @@ junit.xml
 /dist/
 !/.eslintrc.json
 !/projenrc/tsconfig.json
+!/.editorconfig
+!/.devcontainer/devcontainer.json
 !/.projenrc.ts

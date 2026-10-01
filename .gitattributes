@@ -2,6 +2,8 @@
 
 * text=auto eol=lf
 *.snap linguist-generated
+/.devcontainer/devcontainer.json linguist-generated linguist-language=JSON-with-Comments
+/.editorconfig linguist-generated
 /.eslintrc.json linguist-generated linguist-language=JSON-with-Comments
 /.gitattributes linguist-generated
 /.github/pull_request_template.md linguist-generated
