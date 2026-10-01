@@ -1,5 +1,7 @@
 {
   "files": [
+    ".devcontainer/devcontainer.json",
+    ".editorconfig",
     ".eslintrc.json",
     ".gitattributes",
     ".github/pull_request_template.md",

@@ -1,7 +1,9 @@
 # Athena Query Execution Waiter
 
-[![npm version](https://img.shields.io/npm/v/athena-query-execution-waiter.svg)](https://www.npmjs.com/package/athena-query-execution-waiter)
-[![License](https://img.shields.io/npm/l/athena-query-execution-waiter.svg)](https://github.com/gammarers-aws-sdk-extensions/athena-query-execution-waiter/blob/main/LICENSE)
+[![npm version](https://img.shields.io/npm/v/athena-query-execution-waiter?style=flat-square)](https://www.npmjs.com/package/athena-query-execution-waiter)
+[![license](https://img.shields.io/npm/l/athena-query-execution-waiter?style=flat-square)](https://www.npmjs.com/package/athena-query-execution-waiter)
+[![Node.js](https://img.shields.io/node/v/athena-query-execution-waiter?style=flat-square)](https://www.npmjs.com/package/athena-query-execution-waiter)
+[![build](https://img.shields.io/github/actions/workflow/status/gammarers-aws-sdk-extensions/athena-query-execution-waiter/build.yml?label=build&style=flat-square)](https://github.com/gammarers-aws-sdk-extensions/athena-query-execution-waiter/actions/workflows/build.yml)
 
 A small library that waits for an AWS Athena query execution to complete. It repeatedly calls the Athena API until the execution reaches a terminal state: **SUCCEEDED**, **FAILED**, or **CANCELLED**.
 
@@ -11,28 +13,37 @@ A small library that waits for an AWS Athena query execution to complete. It rep
 - Configurable **overall timeout**, **wait interval**, and **`AbortSignal`** cancellation via `wait()` options; default overall cap is **`DEFAULT_TIMEOUT_MS`** (2 minutes).
 - Typed errors: **`AthenaQueryExecutionWaiterTimeoutError`**, **`AthenaQueryExecutionWaiterAbortedError`**, **`AthenaQueryExecutionWaiterStateError`** (failed or cancelled runs), **`AthenaQueryExecutionWaiterMissingStateError`**, **`AthenaQueryExecutionWaiterUnsupportedStateError`**.
 - Timeout errors include **`queryExecutionId`**, **`elapsedTime`**, and **`timeoutMs`** (in both properties and the message) so timeouts can be correlated in mixed logs.
+- A missing or unknown execution state fails on that status check.
 - Built for **AWS SDK for JavaScript v3** (`@aws-sdk/client-athena`).
+- Throttling and transient `GetQueryExecution` errors follow the injected **`AthenaClient`** retry settings (`maxAttempts`, `retryMode`). After those attempts are exhausted, the SDK error propagates and `wait()` ends.
+
+## How it works
+
+Pass the query execution ID from `StartQueryExecution` to `wait()`, along with your `AthenaClient`. The waiter calls `GetQueryExecution`, then waits `waitIntervalMs` while the state is **QUEUED** or **RUNNING**.
+
+**SUCCEEDED** is returned. **FAILED** and **CANCELLED** throw `AthenaQueryExecutionWaiterStateError`. If the overall wait exceeds `timeoutMs` or `DEFAULT_TIMEOUT_MS`, the waiter throws `AthenaQueryExecutionWaiterTimeoutError`. An aborted `AbortSignal` throws `AthenaQueryExecutionWaiterAbortedError`.
 
 ## Installation
 
-**@aws-sdk/client-athena** is a normal **dependency** of this package: installing `athena-query-execution-waiter` pulls in a compatible AWS SDK v3 Athena client. If your app also depends on `@aws-sdk/client-athena`, npm/yarn will dedupe when versions are compatible; otherwise you may have two copies under different semver ranges.
-
-**npm:**
+### npm
 
 ```bash
 npm install athena-query-execution-waiter
 ```
 
-**yarn:**
+### yarn
 
 ```bash
 yarn add athena-query-execution-waiter
 ```
 
-## Requirements
+### pnpm
 
-- **Node.js** >= 20.0.0
-- **@aws-sdk/client-athena** — declared in this package’s `package.json` under `dependencies` (AWS SDK v3; version range is maintained there).
+```bash
+pnpm add athena-query-execution-waiter
+```
+
+`@aws-sdk/client-athena` is a dependency of this package. If your app also depends on it, the package manager dedupes compatible versions.
 
 ## Usage
 
@@ -124,6 +135,34 @@ try {
 
 Waiting stops when the signal is aborted—before the next status check, after a status check returns, or during the wait interval.
 
+### Retries and throttling
+
+This library does not add its own retry loop. `GetQueryExecution` is sent through the `AthenaClient` you pass in, so throttling and other transient failures are retried only by that client. Configure retries when you construct the client:
+
+```typescript
+import { AthenaClient } from '@aws-sdk/client-athena';
+
+const client = new AthenaClient({
+  region: 'us-east-1',
+  maxAttempts: 10,
+  retryMode: 'adaptive',
+});
+```
+
+`maxAttempts` is the total number of attempts per `GetQueryExecution` call (the SDK default is `3`). `retryMode: 'adaptive'` backs off using client-side rate limiting; `'standard'` uses exponential backoff with jitter. The SDK retries errors it classifies as retryable—throttling, transient 5xx responses, and network failures. Errors it does not retry, such as access denied or an invalid query execution ID, leave `wait()` immediately.
+
+### Errors
+
+Catch a concrete subclass before the abstract base `AthenaQueryExecutionWaiterError`.
+
+| Error | When |
+|--------|------|
+| `AthenaQueryExecutionWaiterTimeoutError` | Overall wait exceeded `timeoutMs` or `DEFAULT_TIMEOUT_MS`. Properties: `queryExecutionId`, `elapsedTime`, `timeoutMs`. |
+| `AthenaQueryExecutionWaiterAbortedError` | `AbortSignal` aborted. Property: `signal`. |
+| `AthenaQueryExecutionWaiterStateError` | State is `FAILED` or `CANCELLED`. Properties: `state`, `reason` (`unknown` when Athena omits it). |
+| `AthenaQueryExecutionWaiterMissingStateError` | `QueryExecution`, `Status`, or `State` is missing. Fails on that status check. Property: `detail`. |
+| `AthenaQueryExecutionWaiterUnsupportedStateError` | `State` is not a known `QueryExecutionState`. Fails on that status check. Property: `state`. |
+
 ## Options
 
 ### `AthenaQueryExecutionWaiterOptions` (constructor)
@@ -144,31 +183,9 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
 | `waitIntervalMs` | `number` (optional) | Milliseconds **between** status checks for this call. Default: constructor’s `waitIntervalMs` or `1000`. |
 | `signal` | `AbortSignal` (optional) | When aborted, waiting stops and `AthenaQueryExecutionWaiterAbortedError` is thrown. |
 
-## API reference
+## Requirements
 
-### `AthenaQueryExecutionWaiter`
-
-- **Constructor:** `new AthenaQueryExecutionWaiter(client: AthenaClient, options?: AthenaQueryExecutionWaiterOptions)`
-- **`wait(queryExecutionId: string, waitOptions?: AthenaQueryExecutionWaitOptions): Promise<QueryExecutionState>`**
-  - **Returns** `SUCCEEDED` on success.
-  - **Throws** `AthenaQueryExecutionWaiterTimeoutError` if overall wait exceeds the effective timeout. The error includes `queryExecutionId`, `elapsedTime`, and `timeoutMs`.
-  - **Throws** `AthenaQueryExecutionWaiterAbortedError` when `waitOptions.signal` is aborted.
-  - **Throws** `AthenaQueryExecutionWaiterStateError` when the state is `FAILED` or `CANCELLED`.
-  - **Throws** `AthenaQueryExecutionWaiterMissingStateError` when `QueryExecution`, `Status`, or `State` is missing from the API response (fail-fast; does not keep waiting until timeout).
-  - **Throws** `AthenaQueryExecutionWaiterUnsupportedStateError` when `State` is present but not a known `QueryExecutionState` (e.g. a future Athena enum value).
-
-### Constants
-
-- **`DEFAULT_TIMEOUT_MS`** — Default overall wait cap in milliseconds (2 minutes) when `waitOptions.timeoutMs` is omitted. Safe to import for your own guards or logging.
-
-### Errors
-
-- **`AthenaQueryExecutionWaiterError`** — Base class for waiter errors.
-- **`AthenaQueryExecutionWaiterTimeoutError`** — Overall elapsed time since `wait()` started exceeded `waitOptions.timeoutMs` or `DEFAULT_TIMEOUT_MS`. Properties: `queryExecutionId`, `elapsedTime`, `timeoutMs` (also included in the message). Constructor: `(queryExecutionId: string, elapsedTime: number, timeoutMs: number)`.
-- **`AthenaQueryExecutionWaiterAbortedError`** — Wait was cancelled via `AbortSignal`. Property: `signal`. Constructor: `(signal?: AbortSignal)`.
-- **`AthenaQueryExecutionWaiterStateError`** — Query ended in `FAILED` or `CANCELLED`. Properties: `state`, `reason`. Constructor: `(state: QueryExecutionState, reason?: string)`.
-- **`AthenaQueryExecutionWaiterMissingStateError`** — `GetQueryExecution` response is missing `QueryExecution`, `Status`, or `State`. Property: `detail`. Fails on the first status check.
-- **`AthenaQueryExecutionWaiterUnsupportedStateError`** — `State` is not one of the known values (`QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`). Property: `state`. Fails on the first status check.
+- Node.js >= 20.0.0
 
 ## License
 

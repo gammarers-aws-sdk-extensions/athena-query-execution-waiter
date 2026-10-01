@@ -3,7 +3,7 @@ import {
   classifyQueryExecutionWait,
   shouldContinueWaiting,
   type QueryExecutionWaitResponse,
-} from '../src/wait-predicates';
+} from '../src/core/wait-predicates';
 
 describe('classifyQueryExecutionWait', () => {
   it.each([
@@ -72,6 +72,14 @@ describe('shouldContinueWaiting', () => {
   it.each([
     { outcome: { kind: 'continue' as const }, expected: true },
     { outcome: { kind: 'succeeded' as const }, expected: false },
+    {
+      outcome: {
+        kind: 'failed' as const,
+        state: QueryExecutionState.FAILED,
+        reason: 'boom',
+      },
+      expected: false,
+    },
     { outcome: { kind: 'missing' as const, detail: 'x' }, expected: false },
     { outcome: { kind: 'unsupported' as const, state: 'X' }, expected: false },
   ])('returns $expected when kind is $outcome.kind', ({ outcome, expected }) => {
