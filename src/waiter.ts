@@ -131,7 +131,6 @@ export interface AthenaQueryExecutionWaitOptions {
  * `SUCCEEDED`, `FAILED`, or `CANCELLED`. Overall wall-clock time is bounded by
  * `waitOptions.timeoutMs` (or {@link DEFAULT_TIMEOUT_MS}); spacing between status
  * checks is controlled separately by `waitIntervalMs`.
- * `GetQueryExecution` errors that the Athena client does not absorb propagate to the caller.
  */
 export class AthenaQueryExecutionWaiter {
 
@@ -153,6 +152,8 @@ export class AthenaQueryExecutionWaiter {
 
   /**
    * Waits until the given query execution completes, fails, or is cancelled.
+   *
+   * `GetQueryExecution` errors that the Athena client does not absorb propagate to the caller.
    *
    * @param queryExecutionId Query execution ID returned by `StartQueryExecution`
    * @param waitOptions Optional per-call settings (`timeoutMs`, `waitIntervalMs`, `signal`)
