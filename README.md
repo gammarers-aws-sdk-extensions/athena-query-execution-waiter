@@ -12,6 +12,7 @@ A small library that waits for an AWS Athena query execution to complete. It rep
 - Typed errors: **`AthenaQueryExecutionWaiterTimeoutError`**, **`AthenaQueryExecutionWaiterAbortedError`**, **`AthenaQueryExecutionWaiterStateError`** (failed or cancelled runs), **`AthenaQueryExecutionWaiterMissingStateError`**, **`AthenaQueryExecutionWaiterUnsupportedStateError`**.
 - Timeout errors include **`queryExecutionId`**, **`elapsedTime`**, and **`timeoutMs`** (in both properties and the message) so timeouts can be correlated in mixed logs.
 - Built for **AWS SDK for JavaScript v3** (`@aws-sdk/client-athena`).
+- Throttling and transient `GetQueryExecution` errors follow the injected **`AthenaClient`** retry settings (`maxAttempts`, `retryMode`). After those attempts are exhausted, the SDK error propagates and `wait()` ends.
 
 ## Installation
 
@@ -124,6 +125,22 @@ try {
 
 Waiting stops when the signal is aborted—before the next status check, after a status check returns, or during the wait interval.
 
+### Retries and throttling
+
+This library does not add its own retry loop. `GetQueryExecution` is sent through the `AthenaClient` you pass in, so throttling and other transient failures are retried only by that client. Configure retries when you construct the client:
+
+```typescript
+import { AthenaClient } from '@aws-sdk/client-athena';
+
+const client = new AthenaClient({
+  region: 'us-east-1',
+  maxAttempts: 10,
+  retryMode: 'adaptive',
+});
+```
+
+`maxAttempts` is the total number of attempts per `GetQueryExecution` call (the SDK default is `3`). `retryMode: 'adaptive'` backs off using client-side rate limiting; `'standard'` uses exponential backoff with jitter. The SDK retries errors it classifies as retryable—throttling, transient 5xx responses, and network failures. Errors it does not retry, such as access denied or an invalid query execution ID, leave `wait()` immediately.
+
 ## Options
 
 ### `AthenaQueryExecutionWaiterOptions` (constructor)
@@ -156,6 +173,7 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
   - **Throws** `AthenaQueryExecutionWaiterStateError` when the state is `FAILED` or `CANCELLED`.
   - **Throws** `AthenaQueryExecutionWaiterMissingStateError` when `QueryExecution`, `Status`, or `State` is missing from the API response (fail-fast; does not keep waiting until timeout).
   - **Throws** `AthenaQueryExecutionWaiterUnsupportedStateError` when `State` is present but not a known `QueryExecutionState` (e.g. a future Athena enum value).
+  - **Propagates** `GetQueryExecution` failures that the `AthenaClient` retry settings do not absorb (throttling or transient errors after `maxAttempts`, and non-retryable SDK errors).
 
 ### Constants
 
