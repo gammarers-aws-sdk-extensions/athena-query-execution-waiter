@@ -158,7 +158,8 @@ export class AthenaQueryExecutionWaiter {
    * @param queryExecutionId Query execution ID returned by `StartQueryExecution`
    * @param waitOptions Optional per-call settings (`timeoutMs`, `waitIntervalMs`, `signal`)
    * @returns `QueryExecutionState.SUCCEEDED` when the query completes successfully
-   * @throws AthenaQueryExecutionWaiterTimeoutError When overall wait exceeds the effective timeout. The error includes `queryExecutionId`, `elapsedTime`, and `timeoutMs`
+   * @throws AthenaQueryExecutionWaiterTimeoutError When overall wait exceeds the effective timeout.
+   * The error includes `queryExecutionId`, `elapsedTime`, and `timeoutMs`
    * @throws AthenaQueryExecutionWaiterAbortedError When `waitOptions.signal` is aborted
    * @throws AthenaQueryExecutionWaiterStateError When the final state is `FAILED` or `CANCELLED`
    * @throws AthenaQueryExecutionWaiterMissingStateError When `QueryExecution`, `Status`, or `State` is missing

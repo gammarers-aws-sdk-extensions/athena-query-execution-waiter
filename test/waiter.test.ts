@@ -159,9 +159,9 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(timeoutErr.queryExecutionId).toBe(queryExecutionId);
       expect(timeoutErr.timeoutMs).toBe(timeoutMs);
       expect(timeoutErr.elapsedTime).toBeGreaterThan(timeoutMs);
-      expect(timeoutErr.message).toBe(
-        `Athena query execution ${queryExecutionId} timed out after ${timeoutErr.elapsedTime}ms (timeoutMs: ${timeoutMs})`,
-      );
+      const timedOutMessage = `Athena query execution ${queryExecutionId} timed out after `
+        + `${timeoutErr.elapsedTime}ms (timeoutMs: ${timeoutMs})`;
+      expect(timeoutErr.message).toBe(timedOutMessage);
       expect(mockSend).toHaveBeenCalled();
     });
 
