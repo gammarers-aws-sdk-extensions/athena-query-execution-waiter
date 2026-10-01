@@ -33,6 +33,9 @@ export type QueryExecutionWaitOutcome =
   | { readonly kind: 'missing'; readonly detail: string }
   | { readonly kind: 'unsupported'; readonly state: string };
 
+/** Reason stored when Athena omits `StateChangeReason`. */
+export const UNKNOWN_STATE_CHANGE_REASON = 'unknown';
+
 /** Execution states that require further waiting before a terminal outcome. */
 const IN_PROGRESS_STATES: ReadonlySet<string> = new Set([
   QueryExecutionState.QUEUED,
@@ -80,14 +83,15 @@ export const classifyQueryExecutionWait = (
     return {
       kind: 'failed',
       state: QueryExecutionState.FAILED,
-      reason: status.StateChangeReason ?? 'unknown',
+      reason: status.StateChangeReason ?? UNKNOWN_STATE_CHANGE_REASON,
     };
   }
+
   if (state === QueryExecutionState.CANCELLED) {
     return {
       kind: 'failed',
       state: QueryExecutionState.CANCELLED,
-      reason: status.StateChangeReason ?? 'unknown',
+      reason: status.StateChangeReason ?? UNKNOWN_STATE_CHANGE_REASON,
     };
   }
 
@@ -104,5 +108,7 @@ export const classifyQueryExecutionWait = (
  * @param outcome Outcome from {@link classifyQueryExecutionWait}
  * @returns `true` when `outcome.kind` is `'continue'`; otherwise `false`
  */
-export const shouldContinueWaiting = (outcome: QueryExecutionWaitOutcome): boolean =>
+export const shouldContinueWaiting = (
+  outcome: QueryExecutionWaitOutcome,
+): outcome is Extract<QueryExecutionWaitOutcome, { readonly kind: 'continue' }> =>
   outcome.kind === 'continue';

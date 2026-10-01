@@ -181,7 +181,7 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
 
 ### Errors
 
-- **`AthenaQueryExecutionWaiterError`** — Base class for waiter errors.
+- **`AthenaQueryExecutionWaiterError`** — Abstract base class for waiter errors. Catch a concrete subclass; this type is not constructed directly.
 - **`AthenaQueryExecutionWaiterTimeoutError`** — Overall elapsed time since `wait()` started exceeded `waitOptions.timeoutMs` or `DEFAULT_TIMEOUT_MS`. Properties: `queryExecutionId`, `elapsedTime`, `timeoutMs` (also included in the message). Constructor: `(queryExecutionId: string, elapsedTime: number, timeoutMs: number)`.
 - **`AthenaQueryExecutionWaiterAbortedError`** — Wait was cancelled via `AbortSignal`. Property: `signal`. Constructor: `(signal?: AbortSignal)`.
 - **`AthenaQueryExecutionWaiterStateError`** — Query ended in `FAILED` or `CANCELLED`. Properties: `state`, `reason`. Constructor: `(state: QueryExecutionState, reason?: string)`.
