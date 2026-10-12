@@ -13,14 +13,18 @@
       "npmVersion": "12"
     }
   },
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceMount": "source=${localWorkspaceFolder},target=${containerWorkspaceFolder},type=bind",
   "workspaceFolder": "/workspace",
   "mounts": [
-    "target=/workspace/node_modules"
+    "target=${containerWorkspaceFolder}/node_modules"
   ],
   "remoteUser": "developer",
   "remoteEnv": {
     "npm_config_loglevel": "error"
   },
-  "postCreateCommand": "sudo chown -R $(whoami): /workspace && npm ci"
+  "postCreateCommand": {
+    "fixVolumePermissions": "sudo chown -R $(whoami): /workspace",
+    "gitConfigSafeDirectory": "git config --global --add safe.directory ${containerWorkspaceFolder}",
+    "installDependencies": "npm ci"
+  }
 }
