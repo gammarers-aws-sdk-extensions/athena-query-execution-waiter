@@ -1,4 +1,9 @@
-import { AthenaClient, GetQueryExecutionCommand, QueryExecutionState } from '@aws-sdk/client-athena';
+import {
+  AthenaClient,
+  GetQueryExecutionCommand,
+  type GetQueryExecutionCommandOutput,
+  QueryExecutionState,
+} from '@aws-sdk/client-athena';
 import {
   AthenaQueryExecutionWaiterAbortedError,
   AthenaQueryExecutionWaiterMissingStateError,
@@ -35,7 +40,7 @@ export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1000;
  * @param signal Optional abort signal from `wait()` options
  * @throws AthenaQueryExecutionWaiterAbortedError When `signal.aborted` is true
  */
-const throwIfAborted = (signal?: AbortSignal): void => {
+const ensureNotAborted = (signal?: AbortSignal): void => {
   if (signal?.aborted) {
     throw new AthenaQueryExecutionWaiterAbortedError(signal);
   }
@@ -49,7 +54,7 @@ const throwIfAborted = (signal?: AbortSignal): void => {
  * @throws AthenaQueryExecutionWaiterAbortedError When `signal` is aborted before or during the delay
  */
 const delay = async (ms: number, signal?: AbortSignal): Promise<void> => {
-  throwIfAborted(signal);
+  ensureNotAborted(signal);
   await new Promise<void>((resolve, reject) => {
     const timeoutId = setTimeout(() => {
       cleanup();
@@ -65,6 +70,84 @@ const delay = async (ms: number, signal?: AbortSignal): Promise<void> => {
     };
     signal?.addEventListener('abort', onAbort);
   });
+};
+
+/** Sentinel for a `GetQueryExecution` race lost to the overall wait deadline. */
+const GET_QUERY_EXECUTION_TIMED_OUT: unique symbol = Symbol('getQueryExecutionTimedOut');
+
+/**
+ * Sends `GetQueryExecution` and returns when Athena responds.
+ *
+ * The request races the time left in the overall wait. `signal` is forwarded
+ * through a per-attempt controller passed as `abortSignal`, so the deadline or
+ * an abort stops the in-flight call without aborting the caller's signal.
+ * Other failures from `client.send` propagate to the caller.
+ *
+ * @param client Athena API client used for `GetQueryExecution`
+ * @param queryExecutionId Query execution ID to read
+ * @param signal Optional abort signal from `wait()` options
+ * @param startTime Wall-clock time in milliseconds when `wait()` started
+ * @param timeoutMs Effective overall timeout in milliseconds
+ * @returns `GetQueryExecution` response
+ * @throws AthenaQueryExecutionWaiterTimeoutError When the call does not return before the overall deadline
+ * @throws AthenaQueryExecutionWaiterAbortedError When `signal` is aborted while the call is in flight
+ */
+const getQueryExecutionBeforeDeadline = async (
+  client: AthenaClient,
+  queryExecutionId: string,
+  signal: AbortSignal | undefined,
+  startTime: number,
+  timeoutMs: number,
+): Promise<GetQueryExecutionCommandOutput> => {
+  const attempt = new AbortController();
+  const onCallerAbort = (): void => {
+    attempt.abort();
+  };
+  signal?.addEventListener('abort', onCallerAbort);
+
+  const timeoutError = (): AthenaQueryExecutionWaiterTimeoutError => {
+    const elapsedTime = Date.now() - startTime;
+    return new AthenaQueryExecutionWaiterTimeoutError(queryExecutionId, elapsedTime, timeoutMs);
+  };
+
+  const remainingMs = Math.max(0, timeoutMs - (Date.now() - startTime));
+  let timedOut = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const sendPromise = client.send(new GetQueryExecutionCommand({
+      QueryExecutionId: queryExecutionId,
+    }), {
+      abortSignal: attempt.signal,
+    });
+    // Aborting the attempt can reject `send` after the deadline already won the race.
+    // Handle that rejection so it is not reported as unhandled.
+    void sendPromise.catch(() => undefined);
+
+    const timeoutPromise = new Promise<typeof GET_QUERY_EXECUTION_TIMED_OUT>((resolve) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        attempt.abort();
+        resolve(GET_QUERY_EXECUTION_TIMED_OUT);
+      }, remainingMs);
+    });
+
+    const winner = await Promise.race([sendPromise, timeoutPromise]);
+    if (winner === GET_QUERY_EXECUTION_TIMED_OUT) {
+      throw timeoutError();
+    }
+
+    return winner;
+  } catch (error: unknown) {
+    ensureNotAborted(signal);
+    if (timedOut) {
+      throw timeoutError();
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', onCallerAbort);
+  }
 };
 
 /**
@@ -108,6 +191,7 @@ export interface AthenaQueryExecutionWaitOptions {
   /**
    * Overall wall-clock timeout in milliseconds for this wait (from the start of `wait()`
    * until a terminal state). Not the delay between status checks.
+   * An in-flight `GetQueryExecution` is aborted when this limit is reached.
    * Defaults to {@link DEFAULT_TIMEOUT_MS} when omitted.
    */
   timeoutMs?: number;
@@ -119,7 +203,8 @@ export interface AthenaQueryExecutionWaitOptions {
   /**
    * Optional abort signal. When aborted, waiting stops immediately and
    * {@link AthenaQueryExecutionWaiterAbortedError} is thrown—before the next status
-   * check, after a status check returns, or during the wait interval.
+   * check, while `GetQueryExecution` is in flight, after a status check returns,
+   * or during the wait interval.
    */
   signal?: AbortSignal;
 }
@@ -130,7 +215,8 @@ export interface AthenaQueryExecutionWaitOptions {
  * Repeatedly calls `GetQueryExecution` until the execution becomes
  * `SUCCEEDED`, `FAILED`, or `CANCELLED`. Overall wall-clock time is bounded by
  * `waitOptions.timeoutMs` (or {@link DEFAULT_TIMEOUT_MS}); spacing between status
- * checks is controlled separately by `waitIntervalMs`.
+ * checks is controlled separately by `waitIntervalMs`. An in-flight
+ * `GetQueryExecution` is aborted when that deadline is reached or when `signal` aborts.
  */
 export class AthenaQueryExecutionWaiter {
 
@@ -158,9 +244,11 @@ export class AthenaQueryExecutionWaiter {
    * @param queryExecutionId Query execution ID returned by `StartQueryExecution`
    * @param waitOptions Optional per-call settings (`timeoutMs`, `waitIntervalMs`, `signal`)
    * @returns `QueryExecutionState.SUCCEEDED` when the query completes successfully
-   * @throws AthenaQueryExecutionWaiterTimeoutError When overall wait exceeds the effective timeout.
+   * @throws AthenaQueryExecutionWaiterTimeoutError When the overall wait exceeds the effective timeout,
+   * including when `GetQueryExecution` does not return before that deadline.
    * The error includes `queryExecutionId`, `elapsedTime`, and `timeoutMs`
-   * @throws AthenaQueryExecutionWaiterAbortedError When `waitOptions.signal` is aborted
+   * @throws AthenaQueryExecutionWaiterAbortedError When `waitOptions.signal` is aborted,
+   * including during an in-flight `GetQueryExecution`
    * @throws AthenaQueryExecutionWaiterStateError When the final state is `FAILED` or `CANCELLED`
    * @throws AthenaQueryExecutionWaiterMissingStateError When `QueryExecution`, `Status`, or `State` is missing
    * @throws AthenaQueryExecutionWaiterUnsupportedStateError When `State` is not a known {@link QueryExecutionState}
@@ -177,7 +265,7 @@ export class AthenaQueryExecutionWaiter {
     // Check at least once. Further iterations happen only while Athena still reports QUEUED or RUNNING.
     let outcome: QueryExecutionWaitOutcome;
     do {
-      throwIfAborted(signal);
+      ensureNotAborted(signal);
 
       const elapsedTime = Date.now() - startTime;
       if (elapsedTime > effectiveTimeoutMs) {
@@ -188,10 +276,14 @@ export class AthenaQueryExecutionWaiter {
         );
       }
 
-      const res = await this.client.send(new GetQueryExecutionCommand({
-        QueryExecutionId: queryExecutionId,
-      }));
-      throwIfAborted(signal);
+      const res = await getQueryExecutionBeforeDeadline(
+        this.client,
+        queryExecutionId,
+        signal,
+        startTime,
+        effectiveTimeoutMs,
+      );
+      ensureNotAborted(signal);
 
       outcome = classifyQueryExecutionWait(res);
       if (shouldContinueWaiting(outcome)) {

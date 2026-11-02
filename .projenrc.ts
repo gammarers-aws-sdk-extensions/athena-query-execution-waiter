@@ -15,7 +15,7 @@ const project = new ProjenTypeScriptProject({
     '@aws-sdk/client-athena@^3.983.0',
   ],
   devDeps: [
-    '@gammarers/projen-projects@^0.5.0',
+    '@gammarers/projen-projects@^0.6.3',
   ],
   releaseToNpm: true,
   npmTrustedPublishing: true,

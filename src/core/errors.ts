@@ -75,10 +75,29 @@ export class AthenaQueryExecutionWaiterTimeoutError extends AthenaQueryExecution
 }
 
 /**
+ * Builds the message for a query that ended in `FAILED` or `CANCELLED`.
+ *
+ * `CANCELLED` does not say failed, so a successful cancel is not logged as a failure.
+ * Any other state keeps the failure wording.
+ *
+ * @param state Final execution state
+ * @param reason Reason for the state change
+ * @returns Message that names the state and the reason
+ */
+const queryExecutionStateErrorMessage = (state: QueryExecutionState, reason: string): string => {
+  if (state === QueryExecutionState.CANCELLED) {
+    return `Athena query execution was cancelled with state ${state}: ${reason}`;
+  }
+  return `Athena query execution failed with state ${state}: ${reason}`;
+};
+
+/**
  * Thrown when the query ends in `FAILED` or `CANCELLED` state.
  *
+ * The message says failed or cancelled according to `state`.
+ *
  * @property state Terminal execution state (`FAILED` or `CANCELLED`)
- * @property reason Athena-provided reason for the state change, or `'unknown'` when omitted
+ * @property reason Reason for the state change. Defaults to `'unknown'` when the argument is omitted
  */
 export class AthenaQueryExecutionWaiterStateError extends AthenaQueryExecutionWaiterError {
 
@@ -94,7 +113,7 @@ export class AthenaQueryExecutionWaiterStateError extends AthenaQueryExecutionWa
     public readonly state: QueryExecutionState,
     public readonly reason: string = UNKNOWN_STATE_CHANGE_REASON,
   ) {
-    super(`Athena query execution failed with state ${state}: ${reason}`);
+    super(queryExecutionStateErrorMessage(state, reason));
     Object.setPrototypeOf(this, AthenaQueryExecutionWaiterStateError.prototype);
   }
 }

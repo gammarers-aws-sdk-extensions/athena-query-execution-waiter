@@ -33,8 +33,23 @@ export type QueryExecutionWaitOutcome =
   | { readonly kind: 'missing'; readonly detail: string }
   | { readonly kind: 'unsupported'; readonly state: string };
 
-/** Reason stored when Athena omits `StateChangeReason`. */
+/** Reason stored when Athena omits `StateChangeReason` or returns `''`. */
 export const UNKNOWN_STATE_CHANGE_REASON = 'unknown';
+
+/**
+ * Returns Athena's `StateChangeReason`, or {@link UNKNOWN_STATE_CHANGE_REASON} when it is missing or empty.
+ *
+ * `''` is treated as missing. A whitespace-only reason is kept.
+ *
+ * @param reason `StateChangeReason` from the status, when Athena sent one
+ * @returns The reason, or `'unknown'` when it is missing, `null`, or `''`
+ */
+const stateChangeReasonOrUnknown = (reason: string | null | undefined): string => {
+  if (reason === undefined || reason === null || reason === '') {
+    return UNKNOWN_STATE_CHANGE_REASON;
+  }
+  return reason;
+};
 
 /** Execution states that require further waiting before a terminal outcome. */
 const IN_PROGRESS_STATES: ReadonlySet<string> = new Set([
@@ -83,7 +98,7 @@ export const classifyQueryExecutionWait = (
     return {
       kind: 'failed',
       state: QueryExecutionState.FAILED,
-      reason: status.StateChangeReason ?? UNKNOWN_STATE_CHANGE_REASON,
+      reason: stateChangeReasonOrUnknown(status.StateChangeReason),
     };
   }
 
@@ -91,7 +106,7 @@ export const classifyQueryExecutionWait = (
     return {
       kind: 'failed',
       state: QueryExecutionState.CANCELLED,
-      reason: status.StateChangeReason ?? UNKNOWN_STATE_CHANGE_REASON,
+      reason: stateChangeReasonOrUnknown(status.StateChangeReason),
     };
   }
 

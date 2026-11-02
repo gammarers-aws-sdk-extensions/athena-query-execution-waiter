@@ -9,7 +9,7 @@ A small library that waits for an AWS Athena query execution to complete. It rep
 
 ## Features
 
-- Waits on `GetQueryExecution` until the run finishes or an **overall wall-clock timeout** is exceeded (separate from **wait interval**).
+- Waits on `GetQueryExecution` until the run finishes or an **overall wall-clock timeout** is exceeded (separate from **wait interval**). The timeout and `AbortSignal` also apply while a status check is in flight.
 - Configurable **overall timeout**, **wait interval**, and **`AbortSignal`** cancellation via `wait()` options; default overall cap is **`DEFAULT_TIMEOUT_MS`** (2 minutes).
 - Typed errors: **`AthenaQueryExecutionWaiterTimeoutError`**, **`AthenaQueryExecutionWaiterAbortedError`**, **`AthenaQueryExecutionWaiterStateError`** (failed or cancelled runs), **`AthenaQueryExecutionWaiterMissingStateError`**, **`AthenaQueryExecutionWaiterUnsupportedStateError`**.
 - Timeout errors include **`queryExecutionId`**, **`elapsedTime`**, and **`timeoutMs`** (in both properties and the message) so timeouts can be correlated in mixed logs.
@@ -21,7 +21,7 @@ A small library that waits for an AWS Athena query execution to complete. It rep
 
 Pass the query execution ID from `StartQueryExecution` to `wait()`, along with your `AthenaClient`. The waiter calls `GetQueryExecution`, then waits `waitIntervalMs` while the state is **QUEUED** or **RUNNING**.
 
-**SUCCEEDED** is returned. **FAILED** and **CANCELLED** throw `AthenaQueryExecutionWaiterStateError`. If the overall wait exceeds `timeoutMs` or `DEFAULT_TIMEOUT_MS`, the waiter throws `AthenaQueryExecutionWaiterTimeoutError`. An aborted `AbortSignal` throws `AthenaQueryExecutionWaiterAbortedError`.
+**SUCCEEDED** is returned. **FAILED** and **CANCELLED** throw `AthenaQueryExecutionWaiterStateError`. If the overall wait exceeds `timeoutMs` or `DEFAULT_TIMEOUT_MS`, including while `GetQueryExecution` has not returned, the waiter aborts that call and throws `AthenaQueryExecutionWaiterTimeoutError`. An aborted `AbortSignal` aborts an in-flight `GetQueryExecution` and throws `AthenaQueryExecutionWaiterAbortedError`.
 
 ## Installation
 
@@ -55,7 +55,7 @@ import {
   AthenaQueryExecutionWaiterStateError,
 } from 'athena-query-execution-waiter';
 
-const client = new AthenaClient({ region: 'us-east-1' });
+const client = new AthenaClient();
 const waiter = new AthenaQueryExecutionWaiter(client);
 
 // After StartQueryExecution, wait until the execution completes
@@ -84,7 +84,7 @@ try {
 
 | | Meaning |
 |---|--------|
-| **`waitOptions.timeoutMs` / `DEFAULT_TIMEOUT_MS`** | **Overall** wall-clock limit from when `wait()` starts until **SUCCEEDED**, **FAILED**, or **CANCELLED** (or this cap is exceeded). Omit `timeoutMs` to use `DEFAULT_TIMEOUT_MS`. This is **not** how often status is checked. |
+| **`waitOptions.timeoutMs` / `DEFAULT_TIMEOUT_MS`** | **Overall** wall-clock limit from when `wait()` starts until **SUCCEEDED**, **FAILED**, or **CANCELLED** (or this cap is exceeded). Omit `timeoutMs` to use `DEFAULT_TIMEOUT_MS`. This is **not** how often status is checked. A `GetQueryExecution` call that is still in flight is aborted when this limit is reached. |
 | **`waitIntervalMs`** | Delay **between** `GetQueryExecution` calls. Independent of the overall timeout; a long wait interval still respects `waitOptions.timeoutMs` / `DEFAULT_TIMEOUT_MS`. |
 
 Long-running jobs should pass a higher `timeoutMs` when needed:
@@ -133,7 +133,7 @@ try {
 // Elsewhere: controller.abort();
 ```
 
-Waiting stops when the signal is aborted—before the next status check, after a status check returns, or during the wait interval.
+Waiting stops when the signal is aborted—before the next status check, while `GetQueryExecution` is in flight, after a status check returns, or during the wait interval.
 
 ### Retries and throttling
 
@@ -143,13 +143,11 @@ This library does not add its own retry loop. `GetQueryExecution` is sent throug
 import { AthenaClient } from '@aws-sdk/client-athena';
 
 const client = new AthenaClient({
-  region: 'us-east-1',
-  maxAttempts: 10,
-  retryMode: 'adaptive',
+  maxAttempts: 3,
 });
 ```
 
-`maxAttempts` is the total number of attempts per `GetQueryExecution` call (the SDK default is `3`). `retryMode: 'adaptive'` backs off using client-side rate limiting; `'standard'` uses exponential backoff with jitter. The SDK retries errors it classifies as retryable—throttling, transient 5xx responses, and network failures. Errors it does not retry, such as access denied or an invalid query execution ID, leave `wait()` immediately.
+`maxAttempts` is the total number of attempts per `GetQueryExecution` call, including the first. The SDK default is also `3`. Leave `retryMode` unset so the SDK uses `'standard'` (exponential backoff with jitter). Set `retryMode: 'adaptive'` only when sustained throttling needs client-side rate limiting. The SDK retries errors it classifies as retryable—throttling, transient 5xx responses, and network failures. Errors it does not retry, such as access denied or an invalid query execution ID, leave `wait()` immediately.
 
 ### Errors
 
@@ -157,9 +155,9 @@ Catch a concrete subclass before the abstract base `AthenaQueryExecutionWaiterEr
 
 | Error | When |
 |--------|------|
-| `AthenaQueryExecutionWaiterTimeoutError` | Overall wait exceeded `timeoutMs` or `DEFAULT_TIMEOUT_MS`. Properties: `queryExecutionId`, `elapsedTime`, `timeoutMs`. |
-| `AthenaQueryExecutionWaiterAbortedError` | `AbortSignal` aborted. Property: `signal`. |
-| `AthenaQueryExecutionWaiterStateError` | State is `FAILED` or `CANCELLED`. Properties: `state`, `reason` (`unknown` when Athena omits it). |
+| `AthenaQueryExecutionWaiterTimeoutError` | Overall wait exceeded `timeoutMs` or `DEFAULT_TIMEOUT_MS`, including a `GetQueryExecution` call that does not return in time. Properties: `queryExecutionId`, `elapsedTime`, `timeoutMs`. |
+| `AthenaQueryExecutionWaiterAbortedError` | `AbortSignal` aborted, including during an in-flight `GetQueryExecution`. Property: `signal`. |
+| `AthenaQueryExecutionWaiterStateError` | State is `FAILED` or `CANCELLED`. The message says failed or cancelled according to that state. Properties: `state`, `reason` (`unknown` when Athena omits it or returns an empty string). |
 | `AthenaQueryExecutionWaiterMissingStateError` | `QueryExecution`, `Status`, or `State` is missing. Fails on that status check. Property: `detail`. |
 | `AthenaQueryExecutionWaiterUnsupportedStateError` | `State` is not a known `QueryExecutionState`. Fails on that status check. Property: `state`. |
 
@@ -179,9 +177,9 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `timeoutMs` | `number` (optional) | **Overall** wall-clock timeout in ms from the start of `wait()` until a terminal state. Default: `DEFAULT_TIMEOUT_MS` (**2 minutes**). |
+| `timeoutMs` | `number` (optional) | **Overall** wall-clock timeout in ms from the start of `wait()` until a terminal state. An in-flight `GetQueryExecution` is aborted when this limit is reached. Default: `DEFAULT_TIMEOUT_MS` (**2 minutes**). |
 | `waitIntervalMs` | `number` (optional) | Milliseconds **between** status checks for this call. Default: constructor’s `waitIntervalMs` or `1000`. |
-| `signal` | `AbortSignal` (optional) | When aborted, waiting stops and `AthenaQueryExecutionWaiterAbortedError` is thrown. |
+| `signal` | `AbortSignal` (optional) | When aborted, waiting stops and `AthenaQueryExecutionWaiterAbortedError` is thrown, including during an in-flight `GetQueryExecution`. |
 
 ## Requirements
 
@@ -189,4 +187,4 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
 
 ## License
 
-This project is licensed under the Apache-2.0 License.
+This project is licensed under the (Apache-2.0) License.
