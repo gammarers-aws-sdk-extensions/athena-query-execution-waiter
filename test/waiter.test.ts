@@ -240,16 +240,19 @@ describe('AthenaQueryExecutionWaiter', () => {
       const waiter = new AthenaQueryExecutionWaiter(client, { waitIntervalMs });
 
       jest.useFakeTimers();
-      const p = waiter.wait(queryExecutionId);
-      // Yield so the in-flight status check settles and the wait interval is armed.
-      await jest.advanceTimersByTimeAsync(0);
-      expect(mockSend).toHaveBeenCalledTimes(1);
-      jest.advanceTimersByTime(waitIntervalMs);
-      const result = await p;
-      jest.useRealTimers();
+      try {
+        const p = waiter.wait(queryExecutionId);
+        // Yield so the in-flight status check settles and the wait interval is armed.
+        await jest.advanceTimersByTimeAsync(0);
+        expect(mockSend).toHaveBeenCalledTimes(1);
+        jest.advanceTimersByTime(waitIntervalMs);
+        const result = await p;
 
-      expect(result).toBe(QueryExecutionState.SUCCEEDED);
-      expect(mockSend).toHaveBeenCalledTimes(2);
+        expect(result).toBe(QueryExecutionState.SUCCEEDED);
+        expect(mockSend).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should use waitIntervalMs from wait() options and override constructor default', async () => {
@@ -266,19 +269,22 @@ describe('AthenaQueryExecutionWaiter', () => {
       const callWaitIntervalMs = 150;
 
       jest.useFakeTimers();
-      const p = waiter.wait(queryExecutionId, {
-        timeoutMs: 10000,
-        waitIntervalMs: callWaitIntervalMs,
-      });
-      // Yield so the in-flight status check settles and the wait interval is armed.
-      await jest.advanceTimersByTimeAsync(0);
-      expect(mockSend).toHaveBeenCalledTimes(1);
-      jest.advanceTimersByTime(callWaitIntervalMs);
-      const result = await p;
-      jest.useRealTimers();
+      try {
+        const p = waiter.wait(queryExecutionId, {
+          timeoutMs: 10000,
+          waitIntervalMs: callWaitIntervalMs,
+        });
+        // Yield so the in-flight status check settles and the wait interval is armed.
+        await jest.advanceTimersByTimeAsync(0);
+        expect(mockSend).toHaveBeenCalledTimes(1);
+        jest.advanceTimersByTime(callWaitIntervalMs);
+        const result = await p;
 
-      expect(result).toBe(QueryExecutionState.SUCCEEDED);
-      expect(mockSend).toHaveBeenCalledTimes(2);
+        expect(result).toBe(QueryExecutionState.SUCCEEDED);
+        expect(mockSend).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should throw AthenaQueryExecutionWaiterAbortedError when signal is already aborted', async () => {
@@ -310,20 +316,23 @@ describe('AthenaQueryExecutionWaiter', () => {
       const waitIntervalMs = 200;
 
       jest.useFakeTimers();
-      const p = waiter.wait(queryExecutionId, {
-        waitIntervalMs,
-        signal: controller.signal,
-      });
-      // Yield so the in-flight status check settles and the wait interval is armed.
-      await jest.advanceTimersByTimeAsync(0);
-      expect(mockSend).toHaveBeenCalledTimes(1);
+      try {
+        const p = waiter.wait(queryExecutionId, {
+          waitIntervalMs,
+          signal: controller.signal,
+        });
+        // Yield so the in-flight status check settles and the wait interval is armed.
+        await jest.advanceTimersByTimeAsync(0);
+        expect(mockSend).toHaveBeenCalledTimes(1);
 
-      controller.abort();
-      jest.advanceTimersByTime(waitIntervalMs);
+        controller.abort();
+        jest.advanceTimersByTime(waitIntervalMs);
 
-      await expect(p).rejects.toBeInstanceOf(AthenaQueryExecutionWaiterAbortedError);
-      jest.useRealTimers();
-      expect(mockSend).toHaveBeenCalledTimes(1);
+        await expect(p).rejects.toBeInstanceOf(AthenaQueryExecutionWaiterAbortedError);
+        expect(mockSend).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should throw AthenaQueryExecutionWaiterAbortedError when signal is aborted after API response', async () => {
