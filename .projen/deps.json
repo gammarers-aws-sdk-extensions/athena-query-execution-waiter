@@ -2,7 +2,7 @@
   "dependencies": [
     {
       "name": "@gammarers/projen-projects",
-      "version": "^0.5.0",
+      "version": "^0.6.3",
       "type": "build"
     },
     {

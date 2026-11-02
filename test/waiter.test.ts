@@ -116,6 +116,16 @@ describe('AthenaQueryExecutionWaiter', () => {
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
 
+    it('should propagate GetQueryExecution errors from the client', async () => {
+      const cause = new Error('AccessDeniedException');
+      const mockSend = jest.fn().mockRejectedValue(cause);
+      const client = asClient(mockSend);
+      const waiter = new AthenaQueryExecutionWaiter(client);
+
+      await expect(waiter.wait(queryExecutionId)).rejects.toBe(cause);
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
+
     it('should return "SUCCEEDED" after RUNNING then SUCCEEDED', async () => {
       const mockSend = jest
         .fn()

@@ -32,7 +32,7 @@
     "organization": false
   },
   "devDependencies": {
-    "@gammarers/projen-projects": "^0.5.0",
+    "@gammarers/projen-projects": "^0.6.3",
     "@stylistic/eslint-plugin": "^2",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
@@ -78,6 +78,14 @@
   "version": "0.0.0",
   "jest": {
     "coverageProvider": "v8",
+    "coverageThreshold": {
+      "global": {
+        "branches": 95,
+        "functions": 90,
+        "lines": 100,
+        "statements": 100
+      }
+    },
     "testMatch": [
       "<rootDir>/@(src|test)/**/*(*.)@(spec|test).ts?(x)",
       "<rootDir>/@(src|test)/**/__tests__/**/*.ts?(x)",
