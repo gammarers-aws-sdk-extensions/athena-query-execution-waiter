@@ -55,7 +55,7 @@ import {
   AthenaQueryExecutionWaiterStateError,
 } from 'athena-query-execution-waiter';
 
-const client = new AthenaClient({ region: 'us-east-1' });
+const client = new AthenaClient();
 const waiter = new AthenaQueryExecutionWaiter(client);
 
 // After StartQueryExecution, wait until the execution completes
@@ -143,13 +143,11 @@ This library does not add its own retry loop. `GetQueryExecution` is sent throug
 import { AthenaClient } from '@aws-sdk/client-athena';
 
 const client = new AthenaClient({
-  region: 'us-east-1',
-  maxAttempts: 10,
-  retryMode: 'adaptive',
+  maxAttempts: 3,
 });
 ```
 
-`maxAttempts` is the total number of attempts per `GetQueryExecution` call (the SDK default is `3`). `retryMode: 'adaptive'` backs off using client-side rate limiting; `'standard'` uses exponential backoff with jitter. The SDK retries errors it classifies as retryable—throttling, transient 5xx responses, and network failures. Errors it does not retry, such as access denied or an invalid query execution ID, leave `wait()` immediately.
+`maxAttempts` is the total number of attempts per `GetQueryExecution` call, including the first. The SDK default is also `3`. Leave `retryMode` unset so the SDK uses `'standard'` (exponential backoff with jitter). Set `retryMode: 'adaptive'` only when sustained throttling needs client-side rate limiting. The SDK retries errors it classifies as retryable—throttling, transient 5xx responses, and network failures. Errors it does not retry, such as access denied or an invalid query execution ID, leave `wait()` immediately.
 
 ### Errors
 
@@ -189,4 +187,4 @@ Passed to `wait(queryExecutionId, waitOptions?)`.
 
 ## License
 
-This project is licensed under the Apache-2.0 License.
+This project is licensed under the (Apache-2.0) License.

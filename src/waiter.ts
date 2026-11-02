@@ -81,6 +81,7 @@ const GET_QUERY_EXECUTION_TIMED_OUT: unique symbol = Symbol('getQueryExecutionTi
  * The request races the time left in the overall wait. `signal` is forwarded
  * through a per-attempt controller passed as `abortSignal`, so the deadline or
  * an abort stops the in-flight call without aborting the caller's signal.
+ * Other failures from `client.send` propagate to the caller.
  *
  * @param client Athena API client used for `GetQueryExecution`
  * @param queryExecutionId Query execution ID to read

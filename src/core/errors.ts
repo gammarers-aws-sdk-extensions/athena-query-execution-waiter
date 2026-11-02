@@ -97,7 +97,7 @@ const queryExecutionStateErrorMessage = (state: QueryExecutionState, reason: str
  * The message says failed or cancelled according to `state`.
  *
  * @property state Terminal execution state (`FAILED` or `CANCELLED`)
- * @property reason Athena-provided reason for the state change, or `'unknown'` when Athena omits it or returns an empty string
+ * @property reason Reason for the state change. Defaults to `'unknown'` when the argument is omitted
  */
 export class AthenaQueryExecutionWaiterStateError extends AthenaQueryExecutionWaiterError {
 
