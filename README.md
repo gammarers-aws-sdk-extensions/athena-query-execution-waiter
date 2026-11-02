@@ -159,7 +159,7 @@ Catch a concrete subclass before the abstract base `AthenaQueryExecutionWaiterEr
 |--------|------|
 | `AthenaQueryExecutionWaiterTimeoutError` | Overall wait exceeded `timeoutMs` or `DEFAULT_TIMEOUT_MS`, including a `GetQueryExecution` call that does not return in time. Properties: `queryExecutionId`, `elapsedTime`, `timeoutMs`. |
 | `AthenaQueryExecutionWaiterAbortedError` | `AbortSignal` aborted, including during an in-flight `GetQueryExecution`. Property: `signal`. |
-| `AthenaQueryExecutionWaiterStateError` | State is `FAILED` or `CANCELLED`. Properties: `state`, `reason` (`unknown` when Athena omits it). |
+| `AthenaQueryExecutionWaiterStateError` | State is `FAILED` or `CANCELLED`. The message says failed or cancelled according to that state. Properties: `state`, `reason` (`unknown` when Athena omits it). |
 | `AthenaQueryExecutionWaiterMissingStateError` | `QueryExecution`, `Status`, or `State` is missing. Fails on that status check. Property: `detail`. |
 | `AthenaQueryExecutionWaiterUnsupportedStateError` | `State` is not a known `QueryExecutionState`. Fails on that status check. Property: `state`. |
 

@@ -74,7 +74,7 @@ describe('AthenaQueryExecutionWaiter', () => {
       }
       expect(err).toBeInstanceOf(AthenaQueryExecutionWaiterStateError);
       expect((err as Error).message).toBe(
-        `Athena query execution failed with state ${QueryExecutionState.CANCELLED}: ${reason}`,
+        `Athena query execution was cancelled with state ${QueryExecutionState.CANCELLED}: ${reason}`,
       );
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
