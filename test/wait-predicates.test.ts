@@ -22,8 +22,26 @@ describe('classifyQueryExecutionWait', () => {
       expected: { kind: 'failed', state: QueryExecutionState.FAILED, reason: 'boom' },
     },
     {
+      label: 'FAILED with empty reason',
+      response: {
+        QueryExecution: {
+          Status: { State: QueryExecutionState.FAILED, StateChangeReason: '' },
+        },
+      },
+      expected: { kind: 'failed', state: QueryExecutionState.FAILED, reason: 'unknown' },
+    },
+    {
       label: 'CANCELLED without reason',
       response: { QueryExecution: { Status: { State: QueryExecutionState.CANCELLED } } },
+      expected: { kind: 'failed', state: QueryExecutionState.CANCELLED, reason: 'unknown' },
+    },
+    {
+      label: 'CANCELLED with empty reason',
+      response: {
+        QueryExecution: {
+          Status: { State: QueryExecutionState.CANCELLED, StateChangeReason: '' },
+        },
+      },
       expected: { kind: 'failed', state: QueryExecutionState.CANCELLED, reason: 'unknown' },
     },
     {
